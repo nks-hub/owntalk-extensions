@@ -60,7 +60,7 @@ final class AccessPolicy {
 		if ($isModerator) {
 			return true;
 		}
-		if ($ctx->readOnly === 1) {
+		if ($ctx->readOnly === 1 || $ctx->lobbyActive) {
 			return false;
 		}
 		return $policy === self::POLICY_CHAT

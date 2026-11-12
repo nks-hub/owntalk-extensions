@@ -29,6 +29,8 @@ final class RoomAccessContext {
 		public readonly ?int $permissions = null,
 		public readonly ?int $readOnly = null,
 		public readonly bool $federated = false,
+		/** Lobby is on; non-moderators are waiting in it */
+		public readonly bool $lobbyActive = false,
 		/** Collaboration resource call type, used only without role data: one2one, group, public */
 		public readonly ?string $callType = null,
 	) {

@@ -38,6 +38,8 @@ final class AccessPolicyTest extends TestCase {
 			'guest type' => [self::roles(3, 4), 'chat', false],
 			'guest moderator type' => [self::roles(2, 6), 'moderators', false],
 			'federated owner' => [self::roles(2, 1, federated: true), 'moderators', false],
+			'user waiting in lobby, chat policy' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_TALK_OCS, 2, 3, 254, 0, false, true), 'chat', false],
+			'moderator with lobby on' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_TALK_OCS, 2, 2, 254, 0, false, true), 'moderators', true],
 			'unknown room type' => [self::roles(99, 1), 'moderators', false],
 			'no roles, one2one' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_NONE, callType: 'one2one'), 'moderators', true],
 			'no roles, group' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_NONE, callType: 'group'), 'chat', false],
