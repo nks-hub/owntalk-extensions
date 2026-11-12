@@ -12,6 +12,7 @@ Environment:
   OT_ADMIN_USER  admin user name
   OT_ADMIN_PASS  admin password
   OT_EXPECT_ACL  "roles" (default) or "membership"
+  OT_OCC_CMD     optional shell command prefix that runs occ on the instance
   OT_RESET_CMD   optional shell command that resets the brute-force counter for
                  the test client IP (the suite produces many intentional 404s)
 """
@@ -23,6 +24,7 @@ import json
 import os
 import secrets
 import subprocess
+import time
 import sys
 import urllib.error
 import urllib.request
@@ -139,9 +141,12 @@ def main() -> int:
     # S0 / membership
     st, d, h = ext_get(member, group)
     check("member reads group settings 200", st == 200, str(st))
-    check("ETag header r0 for empty room", h.get("ETag") == '"r0"', str(h.get("ETag")))
-    st, _, _ = ext_get(member, group, {"If-None-Match": '"r0"'})
+    member_etag = '"r0-e0"'
+    check("ETag carries revision and permission", h.get("ETag") == member_etag, str(h.get("ETag")))
+    st, _, _ = ext_get(member, group, {"If-None-Match": member_etag})
     check("If-None-Match matching -> 304", st == 304, str(st))
+    st, _, _ = ext_get(member, group, {"If-None-Match": "W/" + member_etag})
+    check("weak If-None-Match from a compressing proxy -> 304", st == 304, str(st))
     st_out, d_out, _ = ext_get(outsider, group)
     st_rand, d_rand, _ = ext_get(outsider, "zzzz" + RUN + "zz")
     check("outsider reads group -> 404", st_out == 404, str(st_out))
@@ -177,6 +182,17 @@ def main() -> int:
     check("client-supplied role ignored", ext_patch(member, group, {"chat.backgroundColor": "#000000"}, 0)[0] == 403)
 
     if roles:
+        # Promotion changes the ETag, so a cached 304 cannot hide the new permission.
+        _, _, before = ext_get(member, group)
+        call("POST", f"{TALK}/room/{group}/moderators", owner, {"attendeeId": attendee_id(owner, group, member)})
+        time.sleep(16)  # reads may use role data cached for up to 15 s
+        st, d, h = ext_get(member, group, {"If-None-Match": before.get("ETag", "")})
+        check("promoted member: old ETag -> 200 with canEdit", st == 200 and d["permissions"]["canEdit"] is True and h.get("ETag", "").endswith('-e1"'), f"{st} {h.get('ETag')}")
+        call("DELETE", f"{TALK}/room/{group}/moderators", owner, {"attendeeId": attendee_id(owner, group, member)})
+        st, d, _ = ext_patch(member, group, {"chat.backgroundColor": "#222222"}, rev(member, group))
+        check("demoted again -> PATCH 403 despite cached read", st == 403, f"{st} {d}")
+        st, _, _ = call("PATCH", f"{EXT}/room/{group}/settings", member, {"settings": {"chat.backgroundColor": "#222222"}}, {"If-Match": f'W/"r{rev(member, group)}"'})
+        check("weak If-Match is accepted as precondition", st == 403, str(st))
         # Demotion takes effect on the next request.
         call("DELETE", f"{TALK}/room/{group}/moderators", owner, {"attendeeId": attendee_id(owner, group, mod)})
         st, d, _ = ext_patch(mod, group, {"chat.accentColor": "#445566"}, rev(mod, group))
@@ -220,6 +236,28 @@ def main() -> int:
         check(name, st == exp, f"{st} {d}")
     st, d, _ = ext_patch(owner, one, {"composer.quickEmoji": "❤️"}, rev(owner, one))
     check("valid emoji with variation selector -> 200", st == 200, f"{st} {d}")
+
+    # Deleting the last writer removes their user ID from the document.
+    writer = new_user("wrt")
+    wroom = room(owner, 1, invite=writer[0])
+    call("POST", f"/ocs/v2.php/apps/spreed/api/v1/chat/{wroom}", owner, {"message": "hi"})
+    ext_patch(writer, wroom, {"chat.backgroundColor": "#123456"}, 0)
+    call("DELETE", f"/ocs/v2.php/cloud/users/{writer[0]}", ADMIN)
+    st, d, _ = ext_get(owner, wroom)
+    check("deleted user is no longer named as last writer", st == 200 and d["updatedBy"] is None and d["settings"]["chat.backgroundColor"] == "#123456", f"{st} {d and d.get('updatedBy')}")
+
+    # Settings of a deleted conversation are removed by the cleanup.
+    gone = room(owner, 1, invite=mod[0])
+    call("POST", f"/ocs/v2.php/apps/spreed/api/v1/chat/{gone}", owner, {"message": "hi"})
+    st, _, _ = ext_patch(owner, gone, {"chat.accentColor": "#654321"}, 0)
+    check("settings stored before the conversation is deleted", st == 200, str(st))
+    # A one-to-one conversation is deleted by Talk when its last participant leaves.
+    call("DELETE", f"{TALK}/room/{gone}/participants/self", mod)
+    call("DELETE", f"{TALK}/room/{gone}/participants/self", owner)
+    occ = os.environ.get("OT_OCC_CMD")
+    if occ:
+        out = subprocess.run(["bash", "-c", occ + " owntalk-extensions:cleanup"], capture_output=True, text=True).stdout
+        check("cleanup deletes settings of a deleted conversation", "Deleted settings of" in out and not out.strip().startswith("Deleted settings of 0"), out.strip())
 
     # Removal and ban take effect immediately
     reset_bruteforce()
