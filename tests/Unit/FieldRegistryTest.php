@@ -41,6 +41,39 @@ final class FieldRegistryTest extends TestCase {
 		$this->registry()->normalize('composer.quickEmoji', '<b>');
 	}
 
+	public static function emojiThatTheHelperWouldAccept(): array {
+		return [
+			'letter' => ['é', false],
+			'cyrillic letter' => ['ж', false],
+			'right-to-left override before emoji' => ["\u{202E}👍", false],
+			'zero width space after emoji' => ["👍\u{200B}", false],
+			'byte order mark' => ["\u{FEFF}", false],
+			'bare digit' => ['1', false],
+			'bare hash' => ['#', false],
+			'thumbs up' => ['👍', true],
+			'heart with VS16' => ['❤️', true],
+			'skin tone' => ['👍🏽', true],
+			'family ZWJ sequence' => ['👨‍👩‍👧', true],
+			'flag' => ['🇨🇿', true],
+			'keycap' => ['1️⃣', true],
+			'subdivision flag with tags' => ['🏴󠁧󠁢󠁳󠁣󠁴󠁿', true],
+			'information' => ['ℹ️', true],
+			'double exclamation' => ['‼️', true],
+		];
+	}
+
+	#[DataProvider('emojiThatTheHelperWouldAccept')]
+	public function testEmojiIsCheckedBeyondTheHelper(string $value, bool $accepted): void {
+		$emoji = $this->createMock(IEmojiHelper::class);
+		$emoji->method('doesPlatformSupportEmoji')->willReturn(true);
+		$emoji->method('isValidSingleEmoji')->willReturn(true);
+		$registry = new FieldRegistry($emoji);
+		if (!$accepted) {
+			$this->expectException(\InvalidArgumentException::class);
+		}
+		self::assertSame($value, $registry->normalize('composer.quickEmoji', $value));
+	}
+
 	public function testUnknownAndUnsupportedFields(): void {
 		self::assertFalse($this->registry()->isKnown('chat.font'));
 		self::assertTrue($this->registry()->isKnown('composer.quickEmoji'));

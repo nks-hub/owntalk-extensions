@@ -66,7 +66,8 @@ class FieldRegistry {
 			throw new \InvalidArgumentException($field);
 		}
 		if ($field === 'composer.quickEmoji') {
-			if (\strlen($value) > self::MAX_EMOJI_BYTES || !$this->emojiHelper->isValidSingleEmoji($value)) {
+			if (\strlen($value) > self::MAX_EMOJI_BYTES || !self::isPlainEmoji($value)
+				|| !$this->emojiHelper->isValidSingleEmoji($value)) {
 				throw new \InvalidArgumentException($field);
 			}
 			return $value;
@@ -75,5 +76,41 @@ class FieldRegistry {
 			throw new \InvalidArgumentException($field);
 		}
 		return strtoupper($value);
+	}
+
+	/**
+	 * IEmojiHelper::isValidSingleEmoji() also accepts letters, bidi overrides,
+	 * zero-width characters and unassigned code points, so every code point is checked
+	 * against the categories real emoji sequences are made of.
+	 */
+	private static function isPlainEmoji(string $value): bool {
+		if (!preg_match('//u', $value)) {
+			return false;
+		}
+		$pictographic = false;
+		foreach (mb_str_split($value) as $char) {
+			$cp = mb_ord($char, 'UTF-8');
+			if ($cp === 0x200D || $cp === 0xFE0F || ($cp >= 0xE0020 && $cp <= 0xE007F)) {
+				continue;
+			}
+			// Keycap mark and the emoji that Unicode files under letters or punctuation.
+			if (\in_array($cp, [0x20E3, 0x2139, 0x24C2, 0x203C, 0x2049], true)) {
+				$pictographic = true;
+				continue;
+			}
+			$type = \IntlChar::charType($cp);
+			if ($type === \IntlChar::CHAR_CATEGORY_OTHER_SYMBOL || $type === \IntlChar::CHAR_CATEGORY_MATH_SYMBOL) {
+				$pictographic = true;
+				continue;
+			}
+			// Skin tone modifiers and keycap bases (#, *, digits); a keycap needs U+20E3 to count.
+			if ($type === \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL
+				|| $type === \IntlChar::CHAR_CATEGORY_DECIMAL_DIGIT_NUMBER
+				|| $type === \IntlChar::CHAR_CATEGORY_OTHER_PUNCTUATION) {
+				continue;
+			}
+			return false;
+		}
+		return $pictographic;
 	}
 }
