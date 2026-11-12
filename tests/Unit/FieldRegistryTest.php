@@ -53,10 +53,10 @@ final class FieldRegistryTest extends TestCase {
 			'thumbs up' => ['👍', true],
 			'heart with VS16' => ['❤️', true],
 			'skin tone' => ['👍🏽', true],
-			'family ZWJ sequence' => ['👨‍👩‍👧', true],
+			"family ZWJ sequence" => ["\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}", true],
 			'flag' => ['🇨🇿', true],
 			'keycap' => ['1️⃣', true],
-			'subdivision flag with tags' => ['🏴󠁧󠁢󠁳󠁣󠁴󠁿', true],
+			"subdivision flag with tags" => ["\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}", true],
 			'information' => ['ℹ️', true],
 			'double exclamation' => ['‼️', true],
 		];
