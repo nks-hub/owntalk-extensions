@@ -47,6 +47,45 @@ class RoomSettingsRepository {
 	}
 
 	/**
+	 * Tokens with stored settings, in id order, for batch maintenance.
+	 *
+	 * @return array<int, string> id => token
+	 */
+	public function tokensAfter(int $lastId, int $limit): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id', 'room_token')
+			->from(self::TABLE)
+			->where($qb->expr()->gt('id', $qb->createNamedParameter($lastId, IQueryBuilder::PARAM_INT)))
+			->orderBy('id')
+			->setMaxResults($limit);
+		$result = $qb->executeQuery();
+		$tokens = [];
+		while ($row = $result->fetch()) {
+			$tokens[(int)$row['id']] = (string)$row['room_token'];
+		}
+		$result->closeCursor();
+		return $tokens;
+	}
+
+	public function delete(string $token): void {
+		$qb = $this->db->getQueryBuilder();
+		$qb->delete(self::TABLE)->where($qb->expr()->eq('room_token', $qb->createNamedParameter($token)));
+		$qb->executeStatement();
+	}
+
+	public function deleteAll(): int {
+		return $this->db->getQueryBuilder()->delete(self::TABLE)->executeStatement();
+	}
+
+	public function forgetWriter(string $userId): void {
+		$qb = $this->db->getQueryBuilder();
+		$qb->update(self::TABLE)
+			->set('updated_by_id', $qb->createNamedParameter(null))
+			->where($qb->expr()->eq('updated_by_id', $qb->createNamedParameter($userId)));
+		$qb->executeStatement();
+	}
+
+	/**
 	 * Inserts the first revision. Returns false when another request inserted first.
 	 *
 	 * @param array<string, string> $settings

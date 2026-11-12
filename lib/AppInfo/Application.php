@@ -8,10 +8,12 @@ declare(strict_types=1);
 namespace OCA\OwnTalkExtensions\AppInfo;
 
 use OCA\OwnTalkExtensions\Capabilities;
+use OCA\OwnTalkExtensions\Listener\UserDeletedListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
+use OCP\User\Events\UserDeletedEvent;
 
 final class Application extends App implements IBootstrap {
 	public const APP_ID = 'owntalk_extensions';
@@ -22,6 +24,7 @@ final class Application extends App implements IBootstrap {
 
 	public function register(IRegistrationContext $context): void {
 		$context->registerCapability(Capabilities::class);
+		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
 	}
 
 	public function boot(IBootContext $context): void {

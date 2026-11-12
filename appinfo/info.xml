@@ -11,7 +11,7 @@
 	<description><![CDATA[Stores per-conversation settings for Nextcloud Talk that the standard Talk API does not offer, such as a shared chat background colour, bubble colours and a quick emoji button. The values are shown by the open-source OwnTalk client; other Talk clients ignore them.
 
 Access is checked on every request against the current Talk membership through public Nextcloud interfaces. The app does not read, store or send chat messages, push tokens or credentials. Settings are stored on the server and are visible to the server administrator, like Talk chat itself.]]></description>
-	<version>0.1.0</version>
+	<version>0.2.0</version>
 	<licence>agpl</licence>
 	<author homepage="https://github.com/nks-hub">NKS Hub</author>
 	<namespace>OwnTalkExtensions</namespace>
@@ -23,4 +23,10 @@ Access is checked on every request against the current Talk membership through p
 		<php min-version="8.2"/>
 		<nextcloud min-version="34" max-version="35"/>
 	</dependencies>
+	<background-jobs>
+		<job>OCA\OwnTalkExtensions\BackgroundJob\CleanupOrphans</job>
+	</background-jobs>
+	<commands>
+		<command>OCA\OwnTalkExtensions\Command\Cleanup</command>
+	</commands>
 </info>
