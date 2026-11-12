@@ -22,7 +22,7 @@ use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
-use OCP\IConfig;
+use OCP\IAppConfig;
 use OCP\IRequest;
 use OCP\IUserSession;
 
@@ -36,13 +36,14 @@ final class SettingsController extends OCSController {
 		private AccessPolicy $policy,
 		private FieldRegistry $fields,
 		private SettingsService $settings,
-		private IConfig $config,
+		private IAppConfig $appConfig,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
 
 	#[NoAdminRequired]
 	#[BruteForceProtection(action: 'owntalkRoomToken')]
+	#[UserRateLimit(limit: 120, period: 60)]
 	#[ApiRoute(verb: 'GET', url: '/api/v1/room/{token}/settings')]
 	public function get(string $token): DataResponse {
 		try {
@@ -52,8 +53,9 @@ final class SettingsController extends OCSController {
 		}
 
 		$document = $this->document($ctx, $this->settings->get($token));
-		$etag = 'r' . $document['revision'];
-		if (trim((string)$this->request->getHeader('If-None-Match')) === '"' . $etag . '"') {
+		// Permissions are per caller and part of the answer, so they are part of the ETag.
+		$etag = 'r' . $document['revision'] . '-e' . ($document['permissions']['canEdit'] ? '1' : '0');
+		if ($this->stripWeak($this->request->getHeader('If-None-Match')) === '"' . $etag . '"') {
 			$response = new DataResponse([], Http::STATUS_NOT_MODIFIED);
 		} else {
 			$response = new DataResponse($document);
@@ -68,7 +70,7 @@ final class SettingsController extends OCSController {
 	#[ApiRoute(verb: 'PATCH', url: '/api/v1/room/{token}/settings')]
 	public function patch(string $token): DataResponse {
 		try {
-			$ctx = $this->context($token);
+			$ctx = $this->context($token, true);
 		} catch (AccessException $e) {
 			return $this->accessError($e);
 		}
@@ -105,7 +107,7 @@ final class SettingsController extends OCSController {
 			}
 		}
 
-		if (!preg_match('/^"r(0|[1-9][0-9]{0,17})"$/', trim((string)$this->request->getHeader('If-Match')), $m)) {
+		if (!preg_match('/^"r(0|[1-9][0-9]{0,17})"$/D', $this->stripWeak($this->request->getHeader('If-Match')), $m)) {
 			return $this->error('precondition_required', Http::STATUS_PRECONDITION_REQUIRED);
 		}
 
@@ -119,21 +121,43 @@ final class SettingsController extends OCSController {
 			]);
 		}
 
-		$response = new DataResponse($this->document($ctx, $saved));
-		$response->setETag('r' . $saved['revision']);
+		$document = $this->document($ctx, $saved);
+		$response = new DataResponse($document);
+		$response->setETag('r' . $saved['revision'] . '-e' . ($document['permissions']['canEdit'] ? '1' : '0'));
 		return $response;
 	}
 
 	/**
 	 * @throws AccessException
 	 */
-	private function context(string $token): RoomAccessContext {
+	private function context(string $token, bool $fresh = false): RoomAccessContext {
 		$user = $this->userSession->getUser();
 		if ($user === null) {
 			throw new AccessException(AccessException::NOT_FOUND);
 		}
-		$authorization = $this->request->getHeader('Authorization');
-		return $this->roomAccess->resolve($user, $token, $authorization === '' ? null : $authorization);
+		return $this->roomAccess->resolve($user, $token, $this->authorization(), $fresh);
+	}
+
+	/**
+	 * The caller's Authorization header. Some Apache setups expose Basic credentials only as
+	 * PHP_AUTH_USER/PHP_AUTH_PW, so the header is rebuilt from those when it is missing.
+	 */
+	private function authorization(): ?string {
+		$header = $this->request->getHeader('Authorization');
+		if ($header !== '') {
+			return $header;
+		}
+		$server = $this->request->server;
+		if (isset($server['PHP_AUTH_USER'], $server['PHP_AUTH_PW']) && \is_string($server['PHP_AUTH_USER']) && \is_string($server['PHP_AUTH_PW'])) {
+			return 'Basic ' . base64_encode($server['PHP_AUTH_USER'] . ':' . $server['PHP_AUTH_PW']);
+		}
+		return null;
+	}
+
+	/** A proxy that compresses the response turns the ETag weak; the revision inside is still exact. */
+	private function stripWeak(string $value): string {
+		$value = trim($value);
+		return str_starts_with($value, 'W/') ? substr($value, 2) : $value;
 	}
 
 	/**
@@ -157,7 +181,7 @@ final class SettingsController extends OCSController {
 	}
 
 	private function editPolicy(): string {
-		$policy = $this->config->getAppValue(Application::APP_ID, 'edit_policy', AccessPolicy::POLICY_MODERATORS);
+		$policy = $this->appConfig->getValueString(Application::APP_ID, 'edit_policy', AccessPolicy::POLICY_MODERATORS);
 		return $policy === AccessPolicy::POLICY_CHAT ? AccessPolicy::POLICY_CHAT : AccessPolicy::POLICY_MODERATORS;
 	}
 

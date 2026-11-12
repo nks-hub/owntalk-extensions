@@ -24,7 +24,7 @@ use Psr\Log\LoggerInterface;
  * behalf of the caller. Both sources must agree on membership.
  */
 class RoomAccess {
-	public const TOKEN_PATTERN = '/^[a-z0-9]{4,64}$/';
+	public const TOKEN_PATTERN = '/^[a-z0-9]{4,64}$/D';
 
 	public function __construct(
 		private IAppManager $appManager,
@@ -38,7 +38,10 @@ class RoomAccess {
 	/**
 	 * @throws AccessException
 	 */
-	public function resolve(IUser $user, string $token, ?string $authorization): RoomAccessContext {
+	/**
+	 * @param bool $fresh true for writes: role data must not come from the short read cache
+	 */
+	public function resolve(IUser $user, string $token, ?string $authorization, bool $fresh = false): RoomAccessContext {
 		if (!preg_match(self::TOKEN_PATTERN, $token)) {
 			throw new AccessException(AccessException::INVALID_TOKEN);
 		}
@@ -57,7 +60,9 @@ class RoomAccess {
 			throw new AccessException(AccessException::NOT_FOUND);
 		}
 
-		$room = $authorization === null ? ['status' => 'unavailable'] : $this->talk->getRoom($token, $authorization);
+		$room = $authorization === null
+			? ['status' => 'unavailable']
+			: $this->talk->getRoom($token, $authorization, $user->getUID(), $fresh);
 		if ($room['status'] === 'not_member') {
 			$this->logger->warning('Talk membership sources disagree', ['app' => 'owntalk_extensions']);
 			throw new AccessException(AccessException::SOURCE_MISMATCH);
@@ -73,6 +78,7 @@ class RoomAccess {
 				permissions: \is_int($data['permissions'] ?? null) ? $data['permissions'] : null,
 				readOnly: \is_int($data['readOnly'] ?? null) ? $data['readOnly'] : null,
 				federated: \is_string($data['remoteServer'] ?? null) && $data['remoteServer'] !== '',
+				lobbyActive: ($data['lobbyState'] ?? 0) !== 0,
 			);
 		}
 

@@ -8,6 +8,8 @@ declare(strict_types=1);
 namespace OCA\OwnTalkExtensions\Service;
 
 use OCP\Http\Client\IClientService;
+use OCP\ICache;
+use OCP\ICacheFactory;
 use OCP\IConfig;
 use Psr\Log\LoggerInterface;
 
@@ -15,17 +17,24 @@ use Psr\Log\LoggerInterface;
  * Asks this server's public Talk OCS API about a conversation on behalf of the caller.
  *
  * The caller's Authorization header is forwarded only to the origin from the
- * admin-controlled "overwrite.cli.url", never to a host taken from the request.
- * The header is not stored or logged.
+ * admin-controlled "overwrite.cli.url", never to a host taken from the request,
+ * never through the configured outgoing proxy, and never with redirects. The
+ * header is not stored or logged; only a hash of it is part of the cache key.
+ * The answer is accepted only when Talk reports the same user as the caller.
  */
 class TalkOcsClient {
 	private const MAX_BODY_BYTES = 262144;
+	private const CACHE_TTL = 15;
+
+	private ?ICache $cache;
 
 	public function __construct(
 		private IClientService $clientService,
 		private IConfig $config,
+		ICacheFactory $cacheFactory,
 		private LoggerInterface $logger,
 	) {
+		$this->cache = $cacheFactory->isLocalCacheAvailable() ? $cacheFactory->createLocal('owntalk_extensions_roles') : null;
 	}
 
 	public function origin(): ?string {
@@ -45,14 +54,36 @@ class TalkOcsClient {
 	}
 
 	/**
+	 * Role data for $userId in $token. With $fresh = false a result up to 15 s old may be
+	 * returned; writes must pass $fresh = true.
+	 *
 	 * @return array{status: 'ok', data: array<string, mixed>}|array{status: 'not_member'}|array{status: 'unavailable'}
 	 */
-	public function getRoom(string $token, string $authorization): array {
+	public function getRoom(string $token, string $authorization, string $userId, bool $fresh): array {
 		$origin = $this->origin();
-		if ($origin === null || !preg_match('/^(Basic|Bearer) [A-Za-z0-9+\/=._~-]+$/', $authorization)) {
+		if ($origin === null || !preg_match('/^(Basic|Bearer) [A-Za-z0-9+\/=._~-]+$/D', $authorization)) {
 			return ['status' => 'unavailable'];
 		}
 
+		$key = hash('sha256', $userId . "\n" . $token . "\n" . $authorization);
+		if (!$fresh && $this->cache !== null) {
+			$cached = $this->cache->get($key);
+			if (\is_array($cached) && isset($cached['status'])) {
+				return $cached;
+			}
+		}
+
+		$result = $this->fetch($origin, $token, $authorization, $userId);
+		if ($this->cache !== null && $result['status'] !== 'unavailable') {
+			$this->cache->set($key, $result, self::CACHE_TTL);
+		}
+		return $result;
+	}
+
+	/**
+	 * @return array{status: 'ok', data: array<string, mixed>}|array{status: 'not_member'}|array{status: 'unavailable'}
+	 */
+	private function fetch(string $origin, string $token, string $authorization, string $userId): array {
 		try {
 			$response = $this->clientService->newClient()->get(
 				$origin . '/ocs/v2.php/apps/spreed/api/v4/room/' . rawurlencode($token),
@@ -66,6 +97,8 @@ class TalkOcsClient {
 					'connect_timeout' => 2,
 					'allow_redirects' => false,
 					'http_errors' => false,
+					// An empty proxy disables the instance-wide "proxy" setting for this call.
+					'proxy' => '',
 					'nextcloud' => ['allow_local_address' => true],
 				],
 			);
@@ -91,6 +124,10 @@ class TalkOcsClient {
 		$data = $json['ocs']['data'] ?? null;
 		if (!\is_array($data) || ($data['token'] ?? null) !== $token
 			|| !\is_int($data['type'] ?? null) || !\is_int($data['participantType'] ?? null)) {
+			return ['status' => 'unavailable'];
+		}
+		if (($data['actorType'] ?? null) !== 'users' || ($data['actorId'] ?? null) !== $userId) {
+			$this->logger->warning('Talk OCS answered for a different actor', ['app' => 'owntalk_extensions']);
 			return ['status' => 'unavailable'];
 		}
 		return ['status' => 'ok', 'data' => $data];
