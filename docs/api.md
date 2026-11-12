@@ -5,7 +5,7 @@ Base path: `/ocs/v2.php/apps/owntalk_extensions/api/v1`. Every request sends
 other Nextcloud OCS call (app password via Basic auth). Responses use the
 standard OCS envelope `{"ocs": {"meta": {...}, "data": ...}}`.
 
-This document describes the slice that is implemented in 0.1.0. Nicknames,
+This document describes the slice that is implemented in 0.2.0. Nicknames,
 personal preferences, background images and `/revisions` are planned and not
 available yet.
 
@@ -16,7 +16,7 @@ is available for the user:
 
 ```json
 "owntalk_extensions": {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "api": 1,
   "features": ["appearance.colors", "appearance.bubbles", "composer.quickEmoji"],
   "acl": "roles",
@@ -30,7 +30,10 @@ is available for the user:
   is missing when the server has no emoji support (PHP `intl`).
 - `acl`: `roles` when the server can read Talk roles through the Talk OCS API,
   `membership` when it cannot. With `membership`, group and public conversations
-  are read-only for everybody; one-to-one conversations stay editable.
+  are read-only for everybody; one-to-one conversations stay editable. Without
+  role data the server cannot tell a former one-to-one conversation (the other
+  account was deleted) from a normal one, so the remaining participant can still
+  edit it.
 
 ## Settings document
 
@@ -66,8 +69,14 @@ is available for the user:
 
 ### `GET /room/{token}/settings`
 
-- `200` with the document and header `ETag: "r{revision}"`.
-- `If-None-Match: "r{revision}"` matching → `304` without body.
+- `200` with the document and header `ETag: "r{revision}-e1"` when the caller may
+  edit, `"r{revision}-e0"` otherwise. The ETag covers the caller's permission, so a
+  role change produces a new ETag even when the settings did not change. Clients
+  treat it as opaque and send it back unchanged.
+- `If-None-Match` with the current ETag → `304` without body. A weak `W/"…"`
+  form (added by compressing proxies) is accepted.
+- Role data used for `canEdit` on reads may be up to 15 s old; writes always ask
+  Talk again.
 - `404` when the conversation does not exist **or** the caller is not a regular
   participant. Both look the same.
 - `400 invalid_token` when `{token}` does not match `^[a-z0-9]{4,64}$`.
@@ -83,7 +92,8 @@ Body (JSON merge patch over `settings` only):
 ```
 
 Header `If-Match: "r{base}"` is required (`"r0"` for a conversation without
-settings).
+settings). `base` is the revision the user saw when they started editing, not
+the latest one the client happens to have. `W/"r{base}"` is accepted.
 
 | Status | `data.error` | Meaning |
 | --- | --- | --- |
@@ -111,4 +121,11 @@ two writers changing the same field get a conflict.
 | Federated | nobody |
 
 With `occ config:app:set owntalk_extensions edit_policy --value=chat` any participant
-with the Talk "chat" permission may also edit group and public conversations.
+with the Talk "chat" permission may also edit group and public conversations,
+except while the lobby is on.
+
+## Rate limits
+
+`GET` 120 and `PATCH` 30 requests per user per minute. Unknown or inaccessible
+tokens count towards Nextcloud's brute-force protection, so clients stop polling
+a conversation after `404`.

@@ -42,6 +42,16 @@ Nothing to configure for the default rules. Optional settings:
 occ config:app:set owntalk_extensions edit_policy --value=chat
 ```
 
+Settings of deleted conversations are removed by a daily background job, or at
+once with `occ owntalk-extensions:cleanup`. Nextcloud runs uninstall steps on every
+`app:disable`, so the app keeps its data when disabled or removed; delete it
+explicitly before removing the app:
+
+```bash
+occ owntalk-extensions:cleanup --all
+occ app:remove owntalk_extensions
+```
+
 Who may change settings by default:
 
 | Conversation | Editors |
