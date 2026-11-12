@@ -1,0 +1,15 @@
+/vendor/
+/build/
+/.phpunit.cache/
+.phpunit.result.cache
+/AGENTS.md
+/CLAUDE.md
+/.claude/
+/.codex/
+/.idea/
+/.vscode/
+.env
+*.key
+*.pem
+*.p12
+__pycache__/

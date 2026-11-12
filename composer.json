@@ -1,0 +1,36 @@
+{
+	"name": "nks-hub/owntalk-extensions",
+	"description": "Nextcloud app with shared conversation settings for the OwnTalk client",
+	"license": "AGPL-3.0-or-later",
+	"type": "project",
+	"require": {
+		"php": ">=8.2"
+	},
+	"require-dev": {
+		"nextcloud/ocp": "dev-stable34",
+		"phpunit/phpunit": "^10.5"
+	},
+	"autoload": {
+		"psr-4": {
+			"OCA\\OwnTalkExtensions\\": "lib/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"OCA\\OwnTalkExtensions\\Tests\\": "tests/",
+			"OCP\\": "vendor/nextcloud/ocp/OCP/",
+			"NCU\\": "vendor/nextcloud/ocp/NCU/"
+		}
+	},
+	"config": {
+		"optimize-autoloader": true,
+		"sort-packages": true,
+		"platform": {
+			"php": "8.2"
+		}
+	},
+	"scripts": {
+		"lint": "find lib tests -name '*.php' -print0 | xargs -0 -n1 php -l",
+		"test:unit": "phpunit -c tests/phpunit.xml"
+	}
+}
