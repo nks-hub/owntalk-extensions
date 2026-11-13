@@ -5,9 +5,8 @@ Base path: `/ocs/v2.php/apps/owntalk_extensions/api/v1`. Every request sends
 other Nextcloud OCS call (app password via Basic auth). Responses use the
 standard OCS envelope `{"ocs": {"meta": {...}, "data": ...}}`.
 
-This document describes the slice that is implemented in 0.2.0. Nicknames,
-personal preferences, background images and `/revisions` are planned and not
-available yet.
+This document describes 0.3.0. Nicknames, personal preferences and `/revisions`
+are planned and not available yet.
 
 ## Capability
 
@@ -16,18 +15,28 @@ is available for the user:
 
 ```json
 "owntalk_extensions": {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "api": 1,
-  "features": ["appearance.colors", "appearance.bubbles", "composer.quickEmoji"],
+  "features": ["appearance.colors", "appearance.bubbles", "appearance.presets",
+               "appearance.image", "composer.quickEmoji"],
   "acl": "roles",
-  "roomTypes": ["one2one", "group", "public"]
+  "roomTypes": ["one2one", "group", "public"],
+  "presets": ["aurora", "sunset", "forest", "ocean", "dots", "grid"],
+  "limits": { "maxImageBytes": 10485760, "maxImageEdge": 2560 }
 }
 ```
 
 - No `owntalk_extensions` key: the app is not installed or not enabled. Clients
   hide every extension feature.
 - `features` lists only what the server supports right now. `composer.quickEmoji`
-  is missing when the server has no emoji support (PHP `intl`).
+  is missing when the server has no emoji support (PHP `intl`); `appearance.image`
+  is missing when the server cannot decode images (PHP `gd`) or the storage quota
+  for backgrounds is used up.
+- `presets` are the background preset IDs the server accepts. The client draws
+  them itself; a client that does not know an ID falls back to the theme.
+- `limits.maxImageBytes` is the largest upload the server accepts (the smaller of
+  10 MiB and PHP's upload limits); `limits.maxImageEdge` the longest edge after
+  the server scales the image down.
 - `acl`: `roles` when the server can read Talk roles through the Talk OCS API,
   `membership` when it cannot. With `membership`, group and public conversations
   are read-only for everybody; one-to-one conversations stay editable. Without
@@ -49,6 +58,8 @@ is available for the user:
     "bubble.ownTextColor": "#FFFFFF",
     "bubble.otherColor": null,
     "bubble.otherTextColor": null,
+    "chat.backgroundPreset": null,
+    "chat.backgroundImage": "9f2c…64 hex…",
     "composer.quickEmoji": "👍"
   },
   "fieldRevisions": { "chat.backgroundColor": 3, "bubble.ownColor": 2 },
@@ -60,6 +71,11 @@ is available for the user:
 
 - Colours are exactly `#RRGGBB`, upper case. `null` means "not set, use the
   client theme".
+- `chat.backgroundPreset` is one of `presets` or `null`.
+- `chat.backgroundImage` is the SHA-256 (64 lower-case hex) of the current
+  background image or `null`. It is set only through the upload endpoint; `PATCH`
+  can only clear it (`null`).
+- Shared background precedence on the client: image, then preset, then colour.
 - A conversation without stored settings returns `revision: 0`, all values
   `null` and empty `fieldRevisions`.
 - `permissions.canEdit` is computed by the server for the caller.
@@ -109,6 +125,37 @@ the latest one the client happens to have. `W/"r{base}"` is accepted.
 A write is all-or-nothing. Two writers changing different fields both succeed;
 two writers changing the same field get a conflict.
 
+### `PUT /room/{token}/settings/image`
+
+Body: the raw image, `Content-Type: image/jpeg`, `image/png` or `image/webp`.
+Header `If-Match: "r{base}"` as for `PATCH`; the upload changes the field
+`chat.backgroundImage` and follows the same per-field conflict rule and the same
+edit permission.
+
+The server checks the type by content, rejects images over 8192 px on a side or
+40 megapixels before decoding, scales the longest edge to `maxImageEdge`, and
+re-encodes as JPEG. Metadata such as EXIF and location is not kept. The stored
+file is named by the SHA-256 of the re-encoded bytes.
+
+| Status | `data.error` | Meaning |
+| --- | --- | --- |
+| 200 | – | Saved; new document and `ETag` |
+| 400 | `invalid_image` | Not decodable, too many pixels, or type and content differ |
+| 403 | `field_forbidden` | Caller may not change these settings |
+| 404 | `not_found` | Not a participant or no such conversation |
+| 412 / 428 | as for `PATCH` | |
+| 413 | `payload_too_large` | Body over `limits.maxImageBytes` |
+| 415 | `unsupported_media_type` | Not JPEG, PNG or WebP |
+| 507 | `quota_exceeded` | Background storage on this server is full |
+
+### `GET /room/{token}/settings/image/{sha256}`
+
+The current background image of the conversation as `image/jpeg`, for regular
+participants only. `404` when `{sha256}` is not the conversation's current image
+(even if the same image is used by another conversation the caller can see).
+Headers: `ETag: "{sha256}"`, `Cache-Control: private, max-age=31536000,
+immutable`, `X-Content-Type-Options: nosniff`. There is no public link.
+
 ## Who may edit (`acl: roles`)
 
 | Conversation | Who may change settings |
@@ -126,6 +173,7 @@ except while the lobby is on.
 
 ## Rate limits
 
-`GET` 120 and `PATCH` 30 requests per user per minute. Unknown or inaccessible
+`GET` 120 and `PATCH` 30 requests per user per minute, image uploads 10 per user
+per hour, image downloads 60 per user per minute. Unknown or inaccessible
 tokens count towards Nextcloud's brute-force protection, so clients stop polling
 a conversation after `404`.
