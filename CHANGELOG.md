@@ -3,6 +3,19 @@
 All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.3.0 - unreleased
+
+### Added
+
+- Preset wallpapers: `chat.backgroundPreset` with the IDs listed in the
+  capability.
+- Background photos: `PUT /room/{token}/settings/image` and
+  `GET /room/{token}/settings/image/{sha256}`. Uploads are checked by content,
+  limited to 10 MiB and 25 megapixels, rotated by EXIF, scaled to 2560 px and
+  re-encoded as JPEG without metadata. Storage is capped by `image_quota_bytes`.
+- The daily cleanup and `occ owntalk-extensions:cleanup` delete photos no
+  conversation uses; `--all` deletes every photo.
+
 ## 0.2.0 - unreleased
 
 ### Changed

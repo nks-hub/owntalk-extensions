@@ -13,7 +13,10 @@ Please do not open a public issue.
   is bypassed for this call, and redirects are not followed. The answer is used
   only when Talk reports the same user as the caller.
 - Membership is checked on every request; there is no access cache.
-- Stored data: per-conversation colours and quick emoji, the user ID of the last
-  writer and a timestamp. No chat content, push tokens or credentials. The writer's
+- Stored data: per-conversation colours, wallpaper ID, quick emoji, background
+  photo, the user ID of the last writer and a timestamp. Photos are decoded with
+  size and pixel limits, re-encoded as JPEG without metadata (EXIF, location) and
+  kept in the app data folder; they are served only to current participants of a
+  conversation that uses them, never through a public link. No chat content, push tokens or credentials. The writer's
   ID is removed when the account is deleted, and a daily job deletes settings of
   conversations Talk no longer has.

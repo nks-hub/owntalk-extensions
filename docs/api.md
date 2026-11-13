@@ -30,13 +30,12 @@ is available for the user:
   hide every extension feature.
 - `features` lists only what the server supports right now. `composer.quickEmoji`
   is missing when the server has no emoji support (PHP `intl`); `appearance.image`
-  is missing when the server cannot decode images (PHP `gd`) or the storage quota
-  for backgrounds is used up.
+  is missing when the server cannot decode images (PHP `gd`).
 - `presets` are the background preset IDs the server accepts. The client draws
   them itself; a client that does not know an ID falls back to the theme.
-- `limits.maxImageBytes` is the largest upload the server accepts (the smaller of
-  10 MiB and PHP's upload limits); `limits.maxImageEdge` the longest edge after
-  the server scales the image down.
+- `limits.maxImageBytes` is the largest upload the server accepts;
+  `limits.maxImageEdge` the longest edge after the server scales the image down.
+  A reverse proxy in front of Nextcloud may set a lower body limit.
 - `acl`: `roles` when the server can read Talk roles through the Talk OCS API,
   `membership` when it cannot. With `membership`, group and public conversations
   are read-only for everybody; one-to-one conversations stay editable. Without
@@ -133,9 +132,11 @@ Header `If-Match: "r{base}"` as for `PATCH`; the upload changes the field
 edit permission.
 
 The server checks the type by content, rejects images over 8192 px on a side or
-40 megapixels before decoding, scales the longest edge to `maxImageEdge`, and
-re-encodes as JPEG. Metadata such as EXIF and location is not kept. The stored
-file is named by the SHA-256 of the re-encoded bytes.
+25 megapixels before decoding, applies the EXIF rotation, scales the longest edge
+to `maxImageEdge`, and re-encodes as JPEG. Metadata such as EXIF and location is
+not kept. The stored file is named by the SHA-256 of the re-encoded bytes, so the
+same picture is stored once. Images no conversation uses any more are deleted by
+the daily cleanup. WebP is accepted only when PHP's GD can decode it.
 
 | Status | `data.error` | Meaning |
 | --- | --- | --- |
@@ -146,7 +147,7 @@ file is named by the SHA-256 of the re-encoded bytes.
 | 412 / 428 | as for `PATCH` | |
 | 413 | `payload_too_large` | Body over `limits.maxImageBytes` |
 | 415 | `unsupported_media_type` | Not JPEG, PNG or WebP |
-| 507 | `quota_exceeded` | Background storage on this server is full |
+| 507 | `quota_exceeded` | Background storage on this server is full (`image_quota_bytes`, default 1 GiB) |
 
 ### `GET /room/{token}/settings/image/{sha256}`
 

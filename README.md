@@ -4,11 +4,12 @@
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-777bb4)](https://www.php.net)
 [![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue)](LICENSE)
 
-Nextcloud app that stores shared per-conversation settings for Nextcloud Talk (chat background colour, bubble colours, a quick emoji button) and serves them to the [OwnTalk](https://github.com/nks-hub/nks-nextcloud-talk) client.
+Nextcloud app that stores shared per-conversation settings for Nextcloud Talk (chat background colour, wallpaper or photo, bubble colours, a quick emoji button) and serves them to the [OwnTalk](https://github.com/nks-hub/nks-nextcloud-talk) client.
 
 ## Features
 
 - 🎨 **Shared colours** - chat background, accent and bubble colours stored once per conversation and shown to every participant using OwnTalk
+- 🖼️ **Wallpapers and photos** - a preset wallpaper drawn by the client, or a photo that the server checks, rotates, scales to 2560 px and re-encodes as JPEG without metadata
 - 👍 **Quick emoji** - one emoji per conversation that OwnTalk offers as a one-tap reply
 - 🔒 **Talk-based access control** - every request checks current Talk membership through Nextcloud's public collaboration resource API and the caller's Talk role through the Talk OCS API; nothing is cached between requests
 - 🔁 **Concurrent edits** - revisions with `If-Match`; two people changing different fields both succeed, the same field returns `412`
@@ -20,7 +21,7 @@ The app does not read or store chat messages, push tokens or credentials. Settin
 
 - Nextcloud 34 or 35
 - Nextcloud Talk (spreed) enabled
-- PHP 8.2+ (8.3+ for Nextcloud 35); the PHP `intl` extension for the quick emoji field
+- PHP 8.2+ (8.3+ for Nextcloud 35); the PHP `intl` extension for the quick emoji field, `gd` (and `exif` for photo rotation) for photo backgrounds
 - `overwrite.cli.url` pointing at this server (HTTPS, or `http://localhost`) so the app can read Talk roles; without it group conversations are read-only
 
 ## Installation
@@ -40,10 +41,13 @@ Nothing to configure for the default rules. Optional settings:
 ```bash
 # Let every participant with the Talk "chat" permission edit group conversations
 occ config:app:set owntalk_extensions edit_policy --value=chat
+
+# Total size of stored background photos, in bytes (default 1 GiB)
+occ config:app:set owntalk_extensions image_quota_bytes --value=2147483648 --type=integer
 ```
 
-Settings of deleted conversations are removed by a daily background job, or at
-once with `occ owntalk-extensions:cleanup`. Nextcloud runs uninstall steps on every
+Settings of deleted conversations and photos no conversation uses are removed by
+a daily background job, or at once with `occ owntalk-extensions:cleanup`. Nextcloud runs uninstall steps on every
 `app:disable`, so the app keeps its data when disabled or removed; delete it
 explicitly before removing the app:
 
