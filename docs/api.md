@@ -42,6 +42,11 @@ is available for the user:
   role data the server cannot tell a former one-to-one conversation (the other
   account was deleted) from a normal one, so the remaining participant can still
   edit it.
+- `acl` describes the server configuration, not the outcome of each request. With
+  `roles`, a request whose role lookup fails (no forwardable `Authorization`
+  header, Talk API unreachable) gets `canEdit: false` and `aclSource: none`; it
+  never falls back to the `membership` rules. Clients decide from
+  `permissions.canEdit` in each document.
 
 ## Settings document
 

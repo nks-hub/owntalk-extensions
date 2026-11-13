@@ -15,6 +15,23 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-encoded as JPEG without metadata. Storage is capped by `image_quota_bytes`.
 - The daily cleanup and `occ owntalk-extensions:cleanup` delete photos no
   conversation uses; `--all` deletes every photo.
+- The daily cleanup also forgets writers whose accounts were deleted while the
+  app was disabled.
+
+### Fixed
+
+- With Talk roles configured, a failed role lookup no longer falls back to the
+  membership rules, which let the remaining member of a former one-to-one
+  conversation edit it.
+- Removing a deleted user from "last changed by" moves the revision on, so a
+  cached `ETag` no longer hides the change.
+- A write that loses every retry to unrelated edits reports only the fields that
+  really conflict.
+- Colours with a trailing newline are rejected.
+- Quick emoji are checked against the Unicode Emoji properties: symbols such as
+  U+221E are rejected, emoji such as U+3030 are accepted.
+- The App Store description states that the caller's `Authorization` header is
+  forwarded to the server's own Talk API.
 
 ## 0.2.0 - unreleased
 
