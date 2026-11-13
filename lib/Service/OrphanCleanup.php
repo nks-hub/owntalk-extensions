@@ -13,6 +13,7 @@ use OCP\Collaboration\Resources\IManager;
 use OCP\Collaboration\Resources\IProvider;
 use OCP\Collaboration\Resources\IProviderManager;
 use OCP\Collaboration\Resources\ResourceException;
+use OCP\IUserManager;
 
 /**
  * Deletes settings of conversations Talk no longer knows. Access already ends with the
@@ -27,7 +28,22 @@ class OrphanCleanup {
 		private IProviderManager $providerManager,
 		private IManager $resourceManager,
 		private BackgroundImageService $images,
+		private IUserManager $userManager,
 	) {
+	}
+
+	/**
+	 * Covers accounts deleted while this app was disabled and its listener did not run.
+	 */
+	public function forgetDeletedWriters(): int {
+		$forgotten = 0;
+		foreach ($this->repository->writers() as $userId) {
+			if (!$this->userManager->userExists($userId)) {
+				$this->repository->forgetWriter($userId);
+				$forgotten++;
+			}
+		}
+		return $forgotten;
 	}
 
 	/**

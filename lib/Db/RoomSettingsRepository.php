@@ -89,6 +89,21 @@ class RoomSettingsRepository {
 		return $hashes;
 	}
 
+	/** @return list<string> */
+	public function writers(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectDistinct('updated_by_id')
+			->from(self::TABLE)
+			->where($qb->expr()->isNotNull('updated_by_id'));
+		$result = $qb->executeQuery();
+		$writers = [];
+		while (($writer = $result->fetchOne()) !== false) {
+			$writers[] = (string)$writer;
+		}
+		$result->closeCursor();
+		return $writers;
+	}
+
 	public function delete(string $token): void {
 		$qb = $this->db->getQueryBuilder();
 		$qb->delete(self::TABLE)->where($qb->expr()->eq('room_token', $qb->createNamedParameter($token)));
@@ -99,10 +114,15 @@ class RoomSettingsRepository {
 		return $this->db->getQueryBuilder()->delete(self::TABLE)->executeStatement();
 	}
 
+	/**
+	 * Removes the user from "last changed by". The revision moves on so a cached ETag no longer
+	 * matches; field revisions stay, so edits based on the previous revision still merge.
+	 */
 	public function forgetWriter(string $userId): void {
 		$qb = $this->db->getQueryBuilder();
 		$qb->update(self::TABLE)
 			->set('updated_by_id', $qb->createNamedParameter(null))
+			->set('revision', $qb->createFunction('revision + 1'))
 			->where($qb->expr()->eq('updated_by_id', $qb->createNamedParameter($userId)));
 		$qb->executeStatement();
 	}

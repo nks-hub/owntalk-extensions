@@ -51,7 +51,8 @@ final class Cleanup extends Command {
 			return self::FAILURE;
 		}
 		$images = $this->orphans->deleteUnusedImages();
-		$output->writeln("Deleted settings of $deleted removed conversations and $images unused background images.");
+		$writers = $this->orphans->forgetDeletedWriters();
+		$output->writeln("Deleted settings of $deleted removed conversations and $images unused background images; forgot $writers deleted writers.");
 		return self::SUCCESS;
 	}
 }

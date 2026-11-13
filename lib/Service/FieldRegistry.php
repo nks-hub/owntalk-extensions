@@ -16,7 +16,12 @@ use OCP\IEmojiHelper;
  * stay unchanged because values live in one JSON document per conversation.
  */
 class FieldRegistry {
-	private const COLOR_PATTERN = '/^#[0-9A-Fa-f]{6}$/';
+	private const COLOR_PATTERN = '/^#[0-9A-Fa-f]{6}$/D';
+	// ICU UProperty numbers; PHP's IntlChar has no named constants for them.
+	private const UCHAR_EMOJI = 57;
+	private const UCHAR_EMOJI_COMPONENT = 61;
+	private const UCHAR_REGIONAL_INDICATOR = 62;
+	private const UCHAR_EXTENDED_PICTOGRAPHIC = 64;
 	private const MAX_EMOJI_BYTES = 32;
 	/** IDs of backgrounds the client draws itself. */
 	public const PRESETS = ['aurora', 'sunset', 'forest', 'ocean', 'dots', 'grid'];
@@ -96,9 +101,10 @@ class FieldRegistry {
 	}
 
 	/**
-	 * IEmojiHelper::isValidSingleEmoji() also accepts letters, bidi overrides,
-	 * zero-width characters and unassigned code points, so every code point is checked
-	 * against the categories real emoji sequences are made of.
+	 * IEmojiHelper::isValidSingleEmoji() also accepts letters, symbols such as U+221E, bidi
+	 * overrides and zero-width characters, so every code point must carry the Unicode Emoji
+	 * or Emoji_Component property and at least one must be pictographic, a regional
+	 * indicator or the keycap mark (a bare digit is an Emoji_Component, not an emoji).
 	 */
 	private static function isPlainEmoji(string $value): bool {
 		if (!preg_match('//u', $value)) {
@@ -107,26 +113,15 @@ class FieldRegistry {
 		$pictographic = false;
 		foreach (mb_str_split($value) as $char) {
 			$cp = mb_ord($char, 'UTF-8');
-			if ($cp === 0x200D || $cp === 0xFE0F || ($cp >= 0xE0020 && $cp <= 0xE007F)) {
-				continue;
+			if (!\IntlChar::hasBinaryProperty($cp, self::UCHAR_EMOJI)
+				&& !\IntlChar::hasBinaryProperty($cp, self::UCHAR_EMOJI_COMPONENT)) {
+				return false;
 			}
-			// Keycap mark and the emoji that Unicode files under letters or punctuation.
-			if (\in_array($cp, [0x20E3, 0x2139, 0x24C2, 0x203C, 0x2049], true)) {
+			if ($cp === 0x20E3
+				|| \IntlChar::hasBinaryProperty($cp, self::UCHAR_EXTENDED_PICTOGRAPHIC)
+				|| \IntlChar::hasBinaryProperty($cp, self::UCHAR_REGIONAL_INDICATOR)) {
 				$pictographic = true;
-				continue;
 			}
-			$type = \IntlChar::charType($cp);
-			if ($type === \IntlChar::CHAR_CATEGORY_OTHER_SYMBOL || $type === \IntlChar::CHAR_CATEGORY_MATH_SYMBOL) {
-				$pictographic = true;
-				continue;
-			}
-			// Skin tone modifiers and keycap bases (#, *, digits); a keycap needs U+20E3 to count.
-			if ($type === \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL
-				|| $type === \IntlChar::CHAR_CATEGORY_DECIMAL_DIGIT_NUMBER
-				|| $type === \IntlChar::CHAR_CATEGORY_OTHER_PUNCTUATION) {
-				continue;
-			}
-			return false;
 		}
 		return $pictographic;
 	}

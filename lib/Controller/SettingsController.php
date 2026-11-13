@@ -17,6 +17,7 @@ use OCA\OwnTalkExtensions\Service\FieldRegistry;
 use OCA\OwnTalkExtensions\Service\RoomAccess;
 use OCA\OwnTalkExtensions\Service\RoomAccessContext;
 use OCA\OwnTalkExtensions\Service\SettingsService;
+use OCA\OwnTalkExtensions\Service\TalkOcsClient;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\BruteForceProtection;
@@ -42,6 +43,7 @@ final class SettingsController extends OCSController {
 		private SettingsService $settings,
 		private IAppConfig $appConfig,
 		private BackgroundImageService $images,
+		private TalkOcsClient $talk,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -99,7 +101,7 @@ final class SettingsController extends OCSController {
 			}
 		}
 
-		if (!$this->policy->canEditShared($ctx, $this->editPolicy())) {
+		if (!$this->policy->canEditShared($ctx, $this->editPolicy(), $this->talk->origin() !== null)) {
 			return $this->error('field_forbidden', Http::STATUS_FORBIDDEN);
 		}
 
@@ -135,7 +137,7 @@ final class SettingsController extends OCSController {
 		if (!$this->fields->isKnown('chat.backgroundImage')) {
 			return $this->error('unknown_field', Http::STATUS_BAD_REQUEST);
 		}
-		if (!$this->policy->canEditShared($ctx, $this->editPolicy())) {
+		if (!$this->policy->canEditShared($ctx, $this->editPolicy(), $this->talk->origin() !== null)) {
 			return $this->error('field_forbidden', Http::STATUS_FORBIDDEN);
 		}
 		$base = $this->baseRevision();
@@ -262,7 +264,7 @@ final class SettingsController extends OCSController {
 			'settings' => $doc['settings'],
 			'fieldRevisions' => (object)$doc['fieldRevisions'],
 			'permissions' => [
-				'canEdit' => $this->policy->canEditShared($ctx, $this->editPolicy()),
+				'canEdit' => $this->policy->canEditShared($ctx, $this->editPolicy(), $this->talk->origin() !== null),
 				'aclSource' => $ctx->roleSource,
 			],
 			'updatedBy' => $doc['updatedBy'],

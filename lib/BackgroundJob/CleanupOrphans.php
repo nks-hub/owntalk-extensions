@@ -25,5 +25,6 @@ final class CleanupOrphans extends TimedJob {
 	protected function run($argument): void {
 		$this->cleanup->run();
 		$this->cleanup->deleteUnusedImages();
+		$this->cleanup->forgetDeletedWriters();
 	}
 }

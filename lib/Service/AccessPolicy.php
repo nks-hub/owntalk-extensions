@@ -32,14 +32,19 @@ final class AccessPolicy {
 		return $ctx->isMember;
 	}
 
-	public function canEditShared(RoomAccessContext $ctx, string $policy): bool {
+	/**
+	 * @param bool $rolesConfigured the server can look up Talk roles (capability acl=roles);
+	 *                              a failed lookup then denies instead of falling back
+	 */
+	public function canEditShared(RoomAccessContext $ctx, string $policy, bool $rolesConfigured): bool {
 		if (!$ctx->isMember || $ctx->federated) {
 			return false;
 		}
 
 		if ($ctx->roleSource !== RoomAccessContext::ROLE_SOURCE_TALK_OCS) {
-			// Without Talk roles only one-to-one rooms are editable: both members may edit there.
-			return $ctx->callType === 'one2one';
+			// Membership-only servers let both members of a one-to-one room edit. The resource
+			// provider reports former one-to-one rooms as one2one too, a documented limit.
+			return !$rolesConfigured && $ctx->callType === 'one2one';
 		}
 
 		// Guests (4, 6) and users who only followed a public link (5) never edit.

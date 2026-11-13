@@ -81,7 +81,11 @@ class SettingsService {
 			}
 		}
 		$row = $this->repository->find($token);
-		throw new ConflictException($this->toDocument($row), array_keys($patch));
+		$fieldRevisions = $row['fieldRevisions'] ?? [];
+		throw new ConflictException($this->toDocument($row), array_values(array_filter(
+			array_keys($patch),
+			static fn (string $field): bool => ($fieldRevisions[$field] ?? 0) > $baseRevision,
+		)));
 	}
 
 	/**

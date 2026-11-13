@@ -42,14 +42,15 @@ final class AccessPolicyTest extends TestCase {
 			'moderator with lobby on' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_TALK_OCS, 2, 2, 254, 0, false, true), 'moderators', true],
 			'unknown room type' => [self::roles(99, 1), 'moderators', false],
 			'no roles, one2one' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_NONE, callType: 'one2one'), 'moderators', true],
+			'roles configured but lookup failed, one2one' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_NONE, callType: 'one2one'), 'moderators', false, true],
 			'no roles, group' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_NONE, callType: 'group'), 'chat', false],
 			'no roles, unknown type' => [new Ctx('abcd1234', true, Ctx::ROLE_SOURCE_NONE), 'moderators', false],
 		];
 	}
 
 	#[DataProvider('cases')]
-	public function testCanEditShared(Ctx $ctx, string $policy, bool $expected): void {
-		self::assertSame($expected, (new AccessPolicy())->canEditShared($ctx, $policy));
+	public function testCanEditShared(Ctx $ctx, string $policy, bool $expected, bool $rolesConfigured = false): void {
+		self::assertSame($expected, (new AccessPolicy())->canEditShared($ctx, $policy, $rolesConfigured || $ctx->roleSource === Ctx::ROLE_SOURCE_TALK_OCS));
 	}
 
 	public function testReadNeedsMembership(): void {

@@ -46,6 +46,17 @@ final class MemoryRepository extends RoomSettingsRepository {
 }
 
 final class SettingsServiceTest extends TestCase {
+	public function testExhaustedRetriesNameOnlyRealConflicts(): void {
+		$this->service->patch('room1', 0, ['chat.backgroundColor' => '#111111'], 'alice');
+		$this->repo->failNextWrites = 3;
+		try {
+			$this->service->patch('room1', 1, ['bubble.ownColor' => '#222222'], 'bob');
+			self::fail('no conflict');
+		} catch (ConflictException $e) {
+			self::assertSame([], $e->fields);
+		}
+	}
+
 	private MemoryRepository $repo;
 	private SettingsService $service;
 

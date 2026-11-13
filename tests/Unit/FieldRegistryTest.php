@@ -21,7 +21,7 @@ final class FieldRegistryTest extends TestCase {
 	}
 
 	public static function invalidColors(): array {
-		return [['#fff'], ['red'], ['#12345G'], ['#1234567'], ['red;background:url(x)'], [' #123456'], [123], [['#123456']]];
+		return [["#abcdef\n"], ['#fff'], ['red'], ['#12345G'], ['#1234567'], ['red;background:url(x)'], [' #123456'], [123], [['#123456']]];
 	}
 
 	#[DataProvider('invalidColors')]
@@ -50,6 +50,11 @@ final class FieldRegistryTest extends TestCase {
 			'byte order mark' => ["\u{FEFF}", false],
 			'bare digit' => ['1', false],
 			'bare hash' => ['#', false],
+			'infinity math symbol' => ["\u{221E}", false],
+			'arrow without emoji property' => ["\u{2192}", false],
+			'bare skin tone modifier' => ["\u{1F3FD}", false],
+			'wavy dash' => ["\u{3030}\u{FE0F}", true],
+			'left right arrow emoji' => ["\u{2194}\u{FE0F}", true],
 			'thumbs up' => ['👍', true],
 			'heart with VS16' => ['❤️', true],
 			'skin tone' => ['👍🏽', true],
