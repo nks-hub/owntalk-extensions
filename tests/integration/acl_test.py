@@ -20,14 +20,17 @@ from __future__ import annotations
 
 import base64
 import concurrent.futures
+import hashlib
 import json
 import os
 import secrets
+import struct
 import subprocess
 import time
 import sys
 import urllib.error
 import urllib.request
+import zlib
 
 BASE = os.environ["OT_BASE"].rstrip("/")
 ADMIN = (os.environ["OT_ADMIN_USER"], os.environ["OT_ADMIN_PASS"])
@@ -39,10 +42,12 @@ EXT = "/ocs/v2.php/apps/owntalk_extensions/api/v1"
 results: list[tuple[str, bool, str]] = []
 
 
-def call(method, path, auth=None, body=None, headers=None):
+def call(method, path, auth=None, body=None, headers=None, raw_response=False):
     data = None
     hdrs = {"OCS-APIRequest": "true", "Accept": "application/json"}
-    if body is not None:
+    if isinstance(body, bytes):
+        data = body
+    elif body is not None:
         data = json.dumps(body).encode()
         hdrs["Content-Type"] = "application/json"
     if auth is not None:
@@ -54,6 +59,8 @@ def call(method, path, auth=None, body=None, headers=None):
             raw, status, resp_headers = r.read(), r.status, dict(r.headers)
     except urllib.error.HTTPError as e:
         raw, status, resp_headers = e.read(), e.code, dict(e.headers)
+    if raw_response:
+        return status, raw, resp_headers
     try:
         parsed = json.loads(raw) if raw else None
     except json.JSONDecodeError:
@@ -109,6 +116,25 @@ def ext_get(user, token, headers=None):
 def ext_patch(user, token, settings, base):
     hdrs = {} if base is None else {"If-Match": f'"r{base}"'}
     return call("PATCH", f"{EXT}/room/{token}/settings", user, {"settings": settings}, hdrs)
+
+
+def png(width, height, rgb=(30, 120, 200)):
+    def chunk(kind, payload):
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload))
+    rows = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def ext_upload(user, token, data, content_type, base):
+    hdrs = {"Content-Type": content_type}
+    if base is not None:
+        hdrs["If-Match"] = f'"r{base}"'
+    return call("PUT", f"{EXT}/room/{token}/settings/image", user, data, hdrs)
+
+
+def ext_image(user, token, sha):
+    return call("GET", f"{EXT}/room/{token}/settings/image/{sha}", user, raw_response=True)
 
 
 def rev(user, token):
@@ -237,6 +263,51 @@ def main() -> int:
     st, d, _ = ext_patch(owner, one, {"composer.quickEmoji": "❤️"}, rev(owner, one))
     check("valid emoji with variation selector -> 200", st == 200, f"{st} {d}")
 
+    # Presets and background image
+    reset_bruteforce()
+    check("capability lists presets and image limits", cap and "aurora" in cap.get("presets", []) and cap.get("limits", {}).get("maxImageBytes") == 10485760
+          and {"appearance.presets", "appearance.image"} <= set(cap.get("features", [])), str(cap))
+    st, d, _ = ext_patch(owner, one, {"chat.backgroundPreset": "aurora"}, rev(owner, one))
+    check("listed preset -> 200", st == 200 and d["settings"]["chat.backgroundPreset"] == "aurora", f"{st} {d}")
+    st, d, _ = ext_patch(owner, one, {"chat.backgroundPreset": "../aurora"}, rev(owner, one))
+    check("unlisted preset -> 400", st == 400 and d.get("error") == "invalid_value", f"{st} {d}")
+    st, d, _ = ext_patch(owner, one, {"chat.backgroundImage": "a" * 64}, rev(owner, one))
+    check("PATCH cannot point at an image -> 400", st == 400, f"{st} {d}")
+    picture = png(64, 48)
+    st, d, _ = ext_upload(member, group, picture, "image/png", rev(member, group))
+    check("member upload in group -> 403", st == 403 and d.get("error") == "field_forbidden", f"{st} {d}")
+    st, _, _ = ext_upload(outsider, one, picture, "image/png", 0)
+    check("outsider upload -> 404", st == 404, str(st))
+    st, d, _ = ext_upload(owner, one, picture, "image/png", None)
+    check("upload without If-Match -> 428", st == 428, f"{st} {d}")
+    base = rev(owner, one)
+    st, d, h = ext_upload(owner, one, picture, "image/png", base)
+    sha = (d or {}).get("settings", {}).get("chat.backgroundImage") or ""
+    check("owner upload -> 200 with hash and ETag", st == 200 and len(sha) == 64 and h.get("ETag", "").startswith('"r'), f"{st} {d}")
+    st, d, _ = ext_upload(peer, one, png(10, 10, (200, 0, 0)), "image/png", base)
+    check("stale upload -> 412 on the image field", st == 412 and d.get("fields") == ["chat.backgroundImage"], f"{st} {d}")
+    for name, data, ctype, exp in (
+        ("GIF -> 415", b"GIF89a\x01\x00\x01\x00\x00\x00\x00;", "image/gif", 415),
+        ("SVG -> 415", b'<svg xmlns="http://www.w3.org/2000/svg"/>', "image/svg+xml", 415),
+        ("PNG declared as JPEG -> 400", picture, "image/jpeg", 400),
+        ("garbage -> 400", b"x" * 200, "image/png", 400),
+        ("over 10 MiB -> 413", b"\x00" * (10 * 1024 * 1024 + 1), "image/png", 413),
+    ):
+        st, d, _ = ext_upload(peer, one, data, ctype, rev(peer, one))
+        check(name, st == exp, f"{st} {d}")
+    st, body, h = ext_image(peer, one, sha)
+    headers = {k.lower(): v for k, v in h.items()}
+    check("participant downloads re-encoded JPEG", st == 200 and body[:2] == b"\xff\xd8" and hashlib.sha256(body).hexdigest() == sha
+          and headers.get("content-type", "").startswith("image/jpeg"), f"{st} {headers.get('content-type')}")
+    check("image is private and immutable", "private" in headers.get("cache-control", "") and "immutable" in headers.get("cache-control", ""),
+          headers.get("cache-control", ""))
+    check("outsider image -> 404", ext_image(outsider, one, sha)[0] == 404)
+    check("image of another room via own room -> 404", ext_image(member, group, sha)[0] == 404)
+    check("malformed hash -> 404", ext_image(peer, one, "../" + sha[:61])[0] == 404)
+    st, d, _ = ext_patch(peer, one, {"chat.backgroundImage": None}, rev(peer, one))
+    check("PATCH clears the image", st == 200 and d["settings"]["chat.backgroundImage"] is None, f"{st} {d}")
+    check("cleared image -> 404", ext_image(peer, one, sha)[0] == 404)
+
     # Deleting the last writer removes their user ID from the document.
     writer = new_user("wrt")
     wroom = room(owner, 1, invite=writer[0])
@@ -258,6 +329,7 @@ def main() -> int:
     if occ:
         out = subprocess.run(["bash", "-c", occ + " owntalk-extensions:cleanup"], capture_output=True, text=True).stdout
         check("cleanup deletes settings of a deleted conversation", "Deleted settings of" in out and not out.strip().startswith("Deleted settings of 0"), out.strip())
+        check("cleanup reports unused images", "unused background images" in out, out.strip())
 
     # Removal and ban take effect immediately
     reset_bruteforce()
