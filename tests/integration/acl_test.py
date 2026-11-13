@@ -313,9 +313,39 @@ def main() -> int:
     wroom = room(owner, 1, invite=writer[0])
     call("POST", f"/ocs/v2.php/apps/spreed/api/v1/chat/{wroom}", owner, {"message": "hi"})
     ext_patch(writer, wroom, {"chat.backgroundColor": "#123456"}, 0)
+    _, _, cached = ext_get(owner, wroom)
     call("DELETE", f"/ocs/v2.php/cloud/users/{writer[0]}", ADMIN)
-    st, d, _ = ext_get(owner, wroom)
-    check("deleted user is no longer named as last writer", st == 200 and d["updatedBy"] is None and d["settings"]["chat.backgroundColor"] == "#123456", f"{st} {d and d.get('updatedBy')}")
+    st, d, _ = ext_get(owner, wroom, {"If-None-Match": cached.get("ETag", "")})
+    check("deleted user is no longer named as last writer, old ETag -> 200", st == 200 and d["updatedBy"] is None and d["settings"]["chat.backgroundColor"] == "#123456", f"{st} {d and d.get('updatedBy')}")
+    st, _, _ = ext_patch(owner, wroom, {"chat.accentColor": "#123456"}, rev(owner, wroom))
+    check("former one-to-one (other account deleted) -> PATCH 403", st == 403, str(st))
+
+    # A writer deleted while the app is disabled is forgotten by the cleanup.
+    occ = os.environ.get("OT_OCC_CMD")
+    if occ:
+        late = new_user("late")
+        lroom = room(owner, 1, invite=late[0])
+        call("POST", f"/ocs/v2.php/apps/spreed/api/v1/chat/{lroom}", owner, {"message": "hi"})
+        written = ext_patch(late, lroom, {"chat.backgroundColor": "#654321"}, 0)[0]
+        subprocess.run(["bash", "-c", occ + " app:disable owntalk_extensions"], capture_output=True)
+        # Web workers may keep the app loaded for a moment after occ disabled it.
+        for _ in range(15):
+            if ext_get(owner, lroom)[0] != 200:
+                break
+            time.sleep(2)
+        call("DELETE", f"/ocs/v2.php/cloud/users/{late[0]}", ADMIN)
+        subprocess.run(["bash", "-c", occ + " app:enable owntalk_extensions"], capture_output=True)
+        # The first request after app:enable can still miss the new routes.
+        for _ in range(5):
+            st, before, _ = ext_get(owner, lroom)
+            if st == 200:
+                break
+            time.sleep(2)
+        out = subprocess.run(["bash", "-c", occ + " owntalk-extensions:cleanup"], capture_output=True, text=True).stdout
+        st, d, _ = ext_get(owner, lroom)
+        check("cleanup forgets a writer deleted while the app was disabled",
+              written == 200 and (before or {}).get("updatedBy") == late[0] and st == 200 and d["updatedBy"] is None,
+              f"write {written}, {before and before.get('updatedBy')} -> {d and d.get('updatedBy')} {out.strip()}")
 
     # Settings of a deleted conversation are removed by the cleanup.
     gone = room(owner, 1, invite=mod[0])
@@ -325,7 +355,6 @@ def main() -> int:
     # A one-to-one conversation is deleted by Talk when its last participant leaves.
     call("DELETE", f"{TALK}/room/{gone}/participants/self", mod)
     call("DELETE", f"{TALK}/room/{gone}/participants/self", owner)
-    occ = os.environ.get("OT_OCC_CMD")
     if occ:
         out = subprocess.run(["bash", "-c", occ + " owntalk-extensions:cleanup"], capture_output=True, text=True).stdout
         check("cleanup deletes settings of a deleted conversation", "Deleted settings of" in out and not out.strip().startswith("Deleted settings of 0"), out.strip())
