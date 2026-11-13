@@ -35,6 +35,10 @@ git clone https://github.com/nks-hub/owntalk-extensions.git owntalk_extensions
 sudo -u www-data php /var/www/nextcloud/occ app:enable owntalk_extensions
 ```
 
+To update a git installation, check out the new tag and run `occ upgrade`. When
+PHP-FPM runs with `opcache.validate_timestamps=off`, reload PHP-FPM afterwards;
+until then the web server keeps executing the previous version's code.
+
 ## Usage
 
 Nothing to configure for the default rules. Optional settings:
