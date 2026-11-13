@@ -11,7 +11,7 @@
 	<description><![CDATA[Stores per-conversation settings for Nextcloud Talk that the standard Talk API does not offer, such as a shared chat background colour, wallpaper or photo, bubble colours and a quick emoji button. The values are shown by the open-source OwnTalk client; other Talk clients ignore them.
 
 Access is checked on every request against the current Talk membership through public Nextcloud interfaces. The app does not read or store chat messages, push tokens or credentials. To read the caller's Talk role it forwards the caller's Authorization header to this Nextcloud server's own Talk API, without storing it. Settings are stored on the server and are visible to the server administrator, like Talk chat itself.]]></description>
-	<version>0.3.0</version>
+	<version>0.4.0</version>
 	<licence>agpl</licence>
 	<author homepage="https://github.com/nks-hub">NKS Hub</author>
 	<namespace>OwnTalkExtensions</namespace>

@@ -12,6 +12,7 @@ Nextcloud app that stores shared per-conversation settings for Nextcloud Talk (c
 - 🖼️ **Wallpapers and photos** - a preset wallpaper drawn by the client, or a photo that the server checks, rotates, scales to 2560 px and re-encodes as JPEG without metadata
 - 👍 **Quick emoji** - one emoji per conversation that OwnTalk offers as a one-tap reply
 - 🔒 **Talk-based access control** - every request checks current Talk membership through Nextcloud's public collaboration resource API and the caller's Talk role through the Talk OCS API; nothing is cached between requests
+- ⚡ **Instant updates** - with the `notify_push` app installed, a change reaches the other participants' OwnTalk at once instead of on the next poll
 - 🔁 **Concurrent edits** - revisions with `If-Match`; two people changing different fields both succeed, the same field returns `412`
 - 🧩 **Optional** - without this app OwnTalk works as before and hides the extra settings; other Talk clients ignore the data
 

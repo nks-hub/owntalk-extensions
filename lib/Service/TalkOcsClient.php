@@ -24,6 +24,8 @@ use Psr\Log\LoggerInterface;
  */
 class TalkOcsClient {
 	private const MAX_BODY_BYTES = 262144;
+	private const MAX_PARTICIPANTS_BYTES = 2097152;
+	private const MAX_PARTICIPANTS = 1000;
 	private const CACHE_TTL = 15;
 
 	private ?ICache $cache;
@@ -81,26 +83,77 @@ class TalkOcsClient {
 	}
 
 	/**
+	 * User IDs of the conversation's participants as the caller sees them, or null when
+	 * Talk cannot be asked. Used only to address change signals, never for access.
+	 *
+	 * @return list<string>|null
+	 */
+	public function participantUserIds(string $token, string $authorization): ?array {
+		$origin = $this->origin();
+		if ($origin === null || !preg_match('/^(Basic|Bearer) [A-Za-z0-9+\/=._~-]+$/D', $authorization)) {
+			return null;
+		}
+		try {
+			$response = $this->clientService->newClient()->get(
+				$origin . '/ocs/v2.php/apps/spreed/api/v4/room/' . rawurlencode($token) . '/participants',
+				$this->options($authorization),
+			);
+		} catch (\Throwable $e) {
+			$this->logger->info('Talk OCS participant lookup failed: ' . $e::class, ['app' => 'owntalk_extensions']);
+			return null;
+		}
+		$body = $response->getBody();
+		if ($response->getStatusCode() !== 200 || !\is_string($body) || \strlen($body) > self::MAX_PARTICIPANTS_BYTES) {
+			return null;
+		}
+		try {
+			$json = json_decode($body, true, 16, JSON_THROW_ON_ERROR);
+		} catch (\JsonException) {
+			return null;
+		}
+		$list = $json['ocs']['data'] ?? null;
+		if (!\is_array($list) || !array_is_list($list)) {
+			return null;
+		}
+		$users = [];
+		foreach ($list as $participant) {
+			if (\is_array($participant) && ($participant['actorType'] ?? null) === 'users'
+				&& \is_string($participant['actorId'] ?? null) && $participant['actorId'] !== '') {
+				$users[$participant['actorId']] = true;
+			}
+			if (\count($users) >= self::MAX_PARTICIPANTS) {
+				break;
+			}
+		}
+		return array_keys($users);
+	}
+
+	/** @return array<string, mixed> */
+	private function options(string $authorization): array {
+		return [
+			'headers' => [
+				'Authorization' => $authorization,
+				'OCS-APIRequest' => 'true',
+				'Accept' => 'application/json',
+			],
+			'timeout' => 3,
+			'connect_timeout' => 2,
+			'allow_redirects' => false,
+			'http_errors' => false,
+			// An empty proxy disables the instance-wide "proxy" setting for this call.
+			'proxy' => '',
+			'nextcloud' => ['allow_local_address' => true],
+		];
+	}
+
+	/**
 	 * @return array{status: 'ok', data: array<string, mixed>}|array{status: 'not_member'}|array{status: 'unavailable'}
 	 */
 	private function fetch(string $origin, string $token, string $authorization, string $userId): array {
 		try {
 			$response = $this->clientService->newClient()->get(
 				$origin . '/ocs/v2.php/apps/spreed/api/v4/room/' . rawurlencode($token),
-				[
-					'headers' => [
-						'Authorization' => $authorization,
-						'OCS-APIRequest' => 'true',
-						'Accept' => 'application/json',
-					],
-					'timeout' => 3,
-					'connect_timeout' => 2,
-					'allow_redirects' => false,
-					'http_errors' => false,
-					// An empty proxy disables the instance-wide "proxy" setting for this call.
-					'proxy' => '',
-					'nextcloud' => ['allow_local_address' => true],
-				],
+				$this->options($authorization),
 			);
 		} catch (\Throwable $e) {
 			$this->logger->warning('Talk OCS role lookup failed: ' . $e::class, ['app' => 'owntalk_extensions']);

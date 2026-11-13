@@ -75,4 +75,21 @@ final class TalkOcsClientTest extends TestCase {
 		$result = $this->client('https://cloud.example', 404, [])->getRoom('abcd1234', 'Bearer abc', 'alice', true);
 		self::assertSame('not_member', $result['status']);
 	}
+
+	public function testParticipantListKeepsUsersOnceAndSkipsGuests(): void {
+		$users = $this->client('https://cloud.example', 200, [
+			['actorType' => 'users', 'actorId' => 'alice'],
+			['actorType' => 'guests', 'actorId' => 'guest-1'],
+			['actorType' => 'users', 'actorId' => 'bob'],
+			['actorType' => 'users', 'actorId' => 'alice'],
+			['actorType' => 'federated_users', 'actorId' => 'carol@remote.example'],
+		])->participantUserIds('abcd1234', 'Basic YWxpY2U6cHc=');
+		self::assertSame(['alice', 'bob'], $users);
+		self::assertSame('https://cloud.example/ocs/v2.php/apps/spreed/api/v4/room/abcd1234/participants', $this->sentUrl);
+		self::assertSame('', $this->sentOptions['proxy']);
+	}
+
+	public function testParticipantListIsNullWhenTalkRefuses(): void {
+		self::assertNull($this->client('https://cloud.example', 404, [])->participantUserIds('abcd1234', 'Basic YWxpY2U6cHc='));
+	}
 }

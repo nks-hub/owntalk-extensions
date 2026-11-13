@@ -3,6 +3,16 @@
 All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.0 - 2026-11-13
+
+### Added
+
+- After every change the app signals all users of the conversation through the
+  `notify_push` app, when it is installed: the frame
+  `owntalk_room_settings {"token":"…","revision":n}` lets OwnTalk read the new
+  settings at once instead of on its next poll. The capability lists
+  `signal.notifyPush` when the signal is available.
+
 ## 0.3.0 - 2026-11-13
 
 ### Added

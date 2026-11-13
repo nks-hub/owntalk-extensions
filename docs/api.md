@@ -177,6 +177,20 @@ With `occ config:app:set owntalk_extensions edit_policy --value=chat` any partic
 with the Talk "chat" permission may also edit group and public conversations,
 except while the lobby is on.
 
+## Change signal
+
+When the `notify_push` app is installed and Talk roles are available, every
+successful `PATCH` or image upload is followed by a `notify_push` custom event to
+each user participant of the conversation:
+
+```
+owntalk_room_settings {"token":"<room token>","revision":<new revision>}
+```
+
+The capability then lists `signal.notifyPush` in `features`. The signal carries
+no settings; clients read the document again with `GET`. It is best effort, so
+clients keep polling.
+
 ## Rate limits
 
 `GET` 120 and `PATCH` 30 requests per user per minute, image uploads 10 per user

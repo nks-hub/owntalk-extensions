@@ -13,6 +13,7 @@ use OCA\OwnTalkExtensions\Exception\ConflictException;
 use OCA\OwnTalkExtensions\Exception\ImageException;
 use OCA\OwnTalkExtensions\Service\AccessPolicy;
 use OCA\OwnTalkExtensions\Service\BackgroundImageService;
+use OCA\OwnTalkExtensions\Service\ChangeSignal;
 use OCA\OwnTalkExtensions\Service\FieldRegistry;
 use OCA\OwnTalkExtensions\Service\RoomAccess;
 use OCA\OwnTalkExtensions\Service\RoomAccessContext;
@@ -44,6 +45,7 @@ final class SettingsController extends OCSController {
 		private IAppConfig $appConfig,
 		private BackgroundImageService $images,
 		private TalkOcsClient $talk,
+		private ChangeSignal $signal,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -212,6 +214,8 @@ final class SettingsController extends OCSController {
 				'fields' => $e->fields,
 			]);
 		}
+
+		$this->signal->send($ctx->token, $saved['revision'], $this->authorization() ?? '');
 
 		$document = $this->document($ctx, $saved);
 		$response = new DataResponse($document);

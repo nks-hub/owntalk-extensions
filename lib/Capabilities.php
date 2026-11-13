@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\OwnTalkExtensions;
 
 use OCA\OwnTalkExtensions\Service\BackgroundImageService;
+use OCA\OwnTalkExtensions\Service\ChangeSignal;
 use OCA\OwnTalkExtensions\Service\FieldRegistry;
 use OCA\OwnTalkExtensions\Service\RoomAccess;
 use OCA\OwnTalkExtensions\Service\TalkOcsClient;
@@ -22,6 +23,7 @@ final class Capabilities implements ICapability {
 		private RoomAccess $roomAccess,
 		private FieldRegistry $fields,
 		private TalkOcsClient $talk,
+		private ChangeSignal $signal,
 	) {
 	}
 
@@ -37,7 +39,9 @@ final class Capabilities implements ICapability {
 			'owntalk_extensions' => [
 				'version' => $this->appManager->getAppVersion('owntalk_extensions'),
 				'api' => 1,
-				'features' => $this->fields->features(),
+				'features' => $this->signal->isAvailable() && $this->talk->origin() !== null
+					? [...$this->fields->features(), 'signal.notifyPush']
+					: $this->fields->features(),
 				'acl' => $this->talk->origin() === null ? 'membership' : 'roles',
 				'roomTypes' => ['one2one', 'group', 'public'],
 				'presets' => FieldRegistry::PRESETS,
