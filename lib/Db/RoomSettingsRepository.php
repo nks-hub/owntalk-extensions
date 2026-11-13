@@ -67,6 +67,28 @@ class RoomSettingsRepository {
 		return $tokens;
 	}
 
+	/**
+	 * Image hashes that some conversation currently uses as its background.
+	 *
+	 * @return array<string, true>
+	 */
+	public function referencedImages(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('settings')
+			->from(self::TABLE)
+			->where($qb->expr()->like('settings', $qb->createNamedParameter('%' . $this->db->escapeLikeParameter('chat.backgroundImage') . '%')));
+		$result = $qb->executeQuery();
+		$hashes = [];
+		while ($row = $result->fetch()) {
+			$settings = json_decode((string)$row['settings'], true, 4, JSON_THROW_ON_ERROR);
+			if (\is_string($settings['chat.backgroundImage'] ?? null)) {
+				$hashes[$settings['chat.backgroundImage']] = true;
+			}
+		}
+		$result->closeCursor();
+		return $hashes;
+	}
+
 	public function delete(string $token): void {
 		$qb = $this->db->getQueryBuilder();
 		$qb->delete(self::TABLE)->where($qb->expr()->eq('room_token', $qb->createNamedParameter($token)));

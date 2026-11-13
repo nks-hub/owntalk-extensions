@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\OwnTalkExtensions;
 
+use OCA\OwnTalkExtensions\Service\BackgroundImageService;
 use OCA\OwnTalkExtensions\Service\FieldRegistry;
 use OCA\OwnTalkExtensions\Service\RoomAccess;
 use OCA\OwnTalkExtensions\Service\TalkOcsClient;
@@ -39,6 +40,11 @@ final class Capabilities implements ICapability {
 				'features' => $this->fields->features(),
 				'acl' => $this->talk->origin() === null ? 'membership' : 'roles',
 				'roomTypes' => ['one2one', 'group', 'public'],
+				'presets' => FieldRegistry::PRESETS,
+				'limits' => [
+					'maxImageBytes' => BackgroundImageService::MAX_BYTES,
+					'maxImageEdge' => BackgroundImageService::MAX_EDGE,
+				],
 			],
 		];
 	}

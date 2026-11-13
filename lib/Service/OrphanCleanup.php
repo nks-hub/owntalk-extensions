@@ -26,7 +26,16 @@ class OrphanCleanup {
 		private IAppManager $appManager,
 		private IProviderManager $providerManager,
 		private IManager $resourceManager,
+		private BackgroundImageService $images,
 	) {
+	}
+
+	/**
+	 * Deletes stored background images that no conversation uses any more, for example
+	 * after a replacement. Runs without Talk because it only reads this app's table.
+	 */
+	public function deleteUnusedImages(): int {
+		return $this->images->deleteUnreferenced($this->repository->referencedImages());
 	}
 
 	/**

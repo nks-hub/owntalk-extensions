@@ -80,4 +80,17 @@ final class FieldRegistryTest extends TestCase {
 		self::assertFalse($this->registry(false)->isKnown('composer.quickEmoji'));
 		self::assertNotContains('composer.quickEmoji', $this->registry(false)->features());
 	}
+
+	public function testPresetMustBeListed(): void {
+		self::assertSame('aurora', $this->registry()->normalize('chat.backgroundPreset', 'aurora'));
+		self::assertNull($this->registry()->normalize('chat.backgroundPreset', null));
+		$this->expectException(\InvalidArgumentException::class);
+		$this->registry()->normalize('chat.backgroundPreset', 'Aurora');
+	}
+
+	public function testBackgroundImageCanOnlyBeClearedByPatch(): void {
+		self::assertNull($this->registry()->normalize('chat.backgroundImage', null));
+		$this->expectException(\InvalidArgumentException::class);
+		$this->registry()->normalize('chat.backgroundImage', str_repeat('a', 64));
+	}
 }

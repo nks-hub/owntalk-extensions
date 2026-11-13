@@ -18,11 +18,15 @@ use OCP\IEmojiHelper;
 class FieldRegistry {
 	private const COLOR_PATTERN = '/^#[0-9A-Fa-f]{6}$/';
 	private const MAX_EMOJI_BYTES = 32;
+	/** IDs of backgrounds the client draws itself. */
+	public const PRESETS = ['aurora', 'sunset', 'forest', 'ocean', 'dots', 'grid'];
 
 	/** @var array<string, string> field => feature flag */
 	private const FIELDS = [
 		'chat.backgroundColor' => 'appearance.colors',
 		'chat.accentColor' => 'appearance.colors',
+		'chat.backgroundPreset' => 'appearance.presets',
+		'chat.backgroundImage' => 'appearance.image',
 		'bubble.ownColor' => 'appearance.bubbles',
 		'bubble.ownTextColor' => 'appearance.bubbles',
 		'bubble.otherColor' => 'appearance.bubbles',
@@ -46,6 +50,9 @@ class FieldRegistry {
 		if (!$this->emojiHelper->doesPlatformSupportEmoji()) {
 			$features = array_values(array_diff($features, ['composer.quickEmoji']));
 		}
+		if (!BackgroundImageService::isSupported()) {
+			$features = array_values(array_diff($features, ['appearance.image']));
+		}
 		return $features;
 	}
 
@@ -54,7 +61,8 @@ class FieldRegistry {
 	}
 
 	/**
-	 * Returns the normalized value, or throws when it is not acceptable.
+	 * Returns the normalized value, or throws when it is not acceptable. The background image
+	 * is set only by an upload, so through this path it can only be cleared.
 	 *
 	 * @throws \InvalidArgumentException
 	 */
@@ -71,6 +79,15 @@ class FieldRegistry {
 				throw new \InvalidArgumentException($field);
 			}
 			return $value;
+		}
+		if ($field === 'chat.backgroundPreset') {
+			if (!\in_array($value, self::PRESETS, true)) {
+				throw new \InvalidArgumentException($field);
+			}
+			return $value;
+		}
+		if ($field === 'chat.backgroundImage') {
+			throw new \InvalidArgumentException($field);
 		}
 		if (!preg_match(self::COLOR_PATTERN, $value)) {
 			throw new \InvalidArgumentException($field);

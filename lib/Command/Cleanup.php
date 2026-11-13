@@ -9,6 +9,7 @@ namespace OCA\OwnTalkExtensions\Command;
 
 use OCA\OwnTalkExtensions\AppInfo\Application;
 use OCA\OwnTalkExtensions\Db\RoomSettingsRepository;
+use OCA\OwnTalkExtensions\Service\BackgroundImageService;
 use OCA\OwnTalkExtensions\Service\OrphanCleanup;
 use OCP\IAppConfig;
 use Symfony\Component\Console\Command\Command;
@@ -25,21 +26,23 @@ final class Cleanup extends Command {
 		private OrphanCleanup $orphans,
 		private RoomSettingsRepository $repository,
 		private IAppConfig $appConfig,
+		private BackgroundImageService $images,
 	) {
 		parent::__construct();
 	}
 
 	protected function configure(): void {
 		$this->setName('owntalk-extensions:cleanup')
-			->setDescription('Delete settings of deleted conversations, or with --all every stored setting')
-			->addOption('all', null, InputOption::VALUE_NONE, 'Delete all stored settings and app configuration');
+			->setDescription('Delete settings of deleted conversations and unused images, or with --all everything stored')
+			->addOption('all', null, InputOption::VALUE_NONE, 'Delete all stored settings, images and app configuration');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		if ($input->getOption('all')) {
 			$rows = $this->repository->deleteAll();
+			$this->images->deleteAll();
 			$this->appConfig->deleteApp(Application::APP_ID);
-			$output->writeln("Deleted $rows conversation settings and the app configuration.");
+			$output->writeln("Deleted $rows conversation settings, all background images and the app configuration.");
 			return self::SUCCESS;
 		}
 		$deleted = $this->orphans->run();
@@ -47,7 +50,8 @@ final class Cleanup extends Command {
 			$output->writeln('<error>Talk is not available; nothing was checked.</error>');
 			return self::FAILURE;
 		}
-		$output->writeln("Deleted settings of $deleted removed conversations.");
+		$images = $this->orphans->deleteUnusedImages();
+		$output->writeln("Deleted settings of $deleted removed conversations and $images unused background images.");
 		return self::SUCCESS;
 	}
 }

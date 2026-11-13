@@ -10,7 +10,9 @@ namespace OCA\OwnTalkExtensions\Controller;
 use OCA\OwnTalkExtensions\AppInfo\Application;
 use OCA\OwnTalkExtensions\Exception\AccessException;
 use OCA\OwnTalkExtensions\Exception\ConflictException;
+use OCA\OwnTalkExtensions\Exception\ImageException;
 use OCA\OwnTalkExtensions\Service\AccessPolicy;
+use OCA\OwnTalkExtensions\Service\BackgroundImageService;
 use OCA\OwnTalkExtensions\Service\FieldRegistry;
 use OCA\OwnTalkExtensions\Service\RoomAccess;
 use OCA\OwnTalkExtensions\Service\RoomAccessContext;
@@ -21,6 +23,8 @@ use OCP\AppFramework\Http\Attribute\BruteForceProtection;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\FileDisplayResponse;
+use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\OCSController;
 use OCP\IAppConfig;
 use OCP\IRequest;
@@ -37,6 +41,7 @@ final class SettingsController extends OCSController {
 		private FieldRegistry $fields,
 		private SettingsService $settings,
 		private IAppConfig $appConfig,
+		private BackgroundImageService $images,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -107,13 +112,98 @@ final class SettingsController extends OCSController {
 			}
 		}
 
-		if (!preg_match('/^"r(0|[1-9][0-9]{0,17})"$/D', $this->stripWeak($this->request->getHeader('If-Match')), $m)) {
+		$base = $this->baseRevision();
+		if ($base === null) {
 			return $this->error('precondition_required', Http::STATUS_PRECONDITION_REQUIRED);
 		}
+		return $this->save($ctx, $base, $patch);
+	}
 
+	/**
+	 * Stores the raw request body as the conversation background image.
+	 */
+	#[NoAdminRequired]
+	#[BruteForceProtection(action: 'owntalkRoomToken')]
+	#[UserRateLimit(limit: 10, period: 3600)]
+	#[ApiRoute(verb: 'PUT', url: '/api/v1/room/{token}/settings/image')]
+	public function uploadImage(string $token): DataResponse {
+		try {
+			$ctx = $this->context($token, true);
+		} catch (AccessException $e) {
+			return $this->accessError($e);
+		}
+		if (!$this->fields->isKnown('chat.backgroundImage')) {
+			return $this->error('unknown_field', Http::STATUS_BAD_REQUEST);
+		}
+		if (!$this->policy->canEditShared($ctx, $this->editPolicy())) {
+			return $this->error('field_forbidden', Http::STATUS_FORBIDDEN);
+		}
+		$base = $this->baseRevision();
+		if ($base === null) {
+			return $this->error('precondition_required', Http::STATUS_PRECONDITION_REQUIRED);
+		}
+		$type = strtolower(trim(explode(';', $this->request->getHeader('Content-Type'))[0]));
+		if (!\in_array($type, BackgroundImageService::acceptedTypes(), true)) {
+			return $this->error(ImageException::UNSUPPORTED, Http::STATUS_UNSUPPORTED_MEDIA_TYPE);
+		}
+		$length = $this->request->getHeader('Content-Length');
+		if ($length !== '' && (int)$length > BackgroundImageService::MAX_BYTES) {
+			return $this->error(ImageException::TOO_LARGE, Http::STATUS_REQUEST_ENTITY_TOO_LARGE);
+		}
+		$raw = file_get_contents('php://input', false, null, 0, BackgroundImageService::MAX_BYTES + 1);
+		if (!\is_string($raw) || $raw === '') {
+			return $this->error(ImageException::INVALID, Http::STATUS_BAD_REQUEST);
+		}
+		try {
+			$sha = $this->images->store($raw, $type);
+		} catch (ImageException $e) {
+			return $this->error($e->reason, $e->httpStatus());
+		}
+		return $this->save($ctx, $base, ['chat.backgroundImage' => $sha]);
+	}
+
+	/**
+	 * The conversation's current background image. Any other stored image is a 404 here,
+	 * even one another conversation of the caller uses.
+	 */
+	#[NoAdminRequired]
+	#[BruteForceProtection(action: 'owntalkRoomToken')]
+	#[UserRateLimit(limit: 60, period: 60)]
+	#[ApiRoute(verb: 'GET', url: '/api/v1/room/{token}/settings/image/{sha}')]
+	public function image(string $token, string $sha): Response {
+		try {
+			$this->context($token);
+		} catch (AccessException $e) {
+			return $this->accessError($e);
+		}
+		$current = $this->settings->get($token)['settings']['chat.backgroundImage'] ?? null;
+		$file = $current === $sha ? $this->images->find($sha) : null;
+		if ($file === null) {
+			return $this->error('not_found', Http::STATUS_NOT_FOUND);
+		}
+		$response = new FileDisplayResponse($file, Http::STATUS_OK, [
+			'Content-Type' => 'image/jpeg',
+			'X-Content-Type-Options' => 'nosniff',
+		]);
+		$response->setETag($sha);
+		$response->cacheFor(31536000, false, true);
+		return $response;
+	}
+
+	private function baseRevision(): ?int {
+		if (!preg_match('/^"r(0|[1-9][0-9]{0,17})"$/D', $this->stripWeak($this->request->getHeader('If-Match')), $m)) {
+			return null;
+		}
+		return (int)$m[1];
+	}
+
+	/**
+	 * @param array<string, ?string> $patch
+	 */
+	private function save(RoomAccessContext $ctx, int $base, array $patch): DataResponse {
 		$userId = $this->userSession->getUser()?->getUID() ?? '';
 		try {
-			$saved = $this->settings->patch($token, (int)$m[1], $patch, $userId);
+			$saved = $this->settings->patch($ctx->token, $base, $patch, $userId);
 		} catch (ConflictException $e) {
 			return $this->error('revision_conflict', Http::STATUS_PRECONDITION_FAILED, [
 				'current' => $this->document($ctx, $e->current),
