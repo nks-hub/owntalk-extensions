@@ -24,7 +24,11 @@ class FieldRegistry {
 	private const UCHAR_EXTENDED_PICTOGRAPHIC = 64;
 	private const MAX_EMOJI_BYTES = 32;
 	/** IDs of backgrounds the client draws itself. */
-	public const PRESETS = ['aurora', 'sunset', 'forest', 'ocean', 'dots', 'grid'];
+	public const PRESETS = [
+		'aurora', 'sunset', 'forest', 'ocean', 'dots', 'grid',
+		'lavender', 'peach', 'mint', 'nebula', 'bokeh', 'waves',
+		'dunes', 'topo', 'stars', 'confetti',
+	];
 
 	/** @var array<string, string> field => feature flag */
 	private const FIELDS = [

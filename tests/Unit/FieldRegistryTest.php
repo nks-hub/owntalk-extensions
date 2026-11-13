@@ -88,6 +88,7 @@ final class FieldRegistryTest extends TestCase {
 
 	public function testPresetMustBeListed(): void {
 		self::assertSame('aurora', $this->registry()->normalize('chat.backgroundPreset', 'aurora'));
+		self::assertSame('confetti', $this->registry()->normalize('chat.backgroundPreset', 'confetti'));
 		self::assertNull($this->registry()->normalize('chat.backgroundPreset', null));
 		$this->expectException(\InvalidArgumentException::class);
 		$this->registry()->normalize('chat.backgroundPreset', 'Aurora');

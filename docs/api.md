@@ -21,7 +21,7 @@ is available for the user:
                "appearance.image", "composer.quickEmoji"],
   "acl": "roles",
   "roomTypes": ["one2one", "group", "public"],
-  "presets": ["aurora", "sunset", "forest", "ocean", "dots", "grid"],
+  "presets": ["aurora", "sunset", "forest", "ocean", "dots", "grid", "lavender", "peach", "mint", "nebula", "bokeh", "waves", "dunes", "topo", "stars", "confetti"],
   "limits": { "maxImageBytes": 10485760, "maxImageEdge": 2560 }
 }
 ```
