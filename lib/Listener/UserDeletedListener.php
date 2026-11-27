@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\OwnTalkExtensions\Listener;
 
 use OCA\OwnTalkExtensions\Db\RoomSettingsRepository;
+use OCA\OwnTalkExtensions\Db\RoomDocuments;
 use OCA\OwnTalkExtensions\Db\RoomToolsRepository;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -23,6 +24,7 @@ final class UserDeletedListener implements IEventListener {
 	public function __construct(
 		private RoomSettingsRepository $repository,
 		private RoomToolsRepository $tools,
+		private RoomDocuments $documents,
 	) {
 	}
 
@@ -30,6 +32,7 @@ final class UserDeletedListener implements IEventListener {
 		if ($event instanceof UserDeletedEvent) {
 			$this->repository->forgetWriter($event->getUser()->getUID());
 			$this->tools->purgeOwner($event->getUser()->getUID());
+			$this->documents->purgeOwner($event->getUser()->getUID());
 		}
 	}
 }

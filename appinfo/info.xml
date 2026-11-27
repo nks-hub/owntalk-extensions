@@ -10,8 +10,10 @@
 	<summary>Shared conversation settings for the OwnTalk client</summary>
 	<description><![CDATA[Stores per-conversation settings for Nextcloud Talk that the standard Talk API does not offer, such as a shared chat background colour, wallpaper or photo, bubble colours and a quick emoji button. The values are shown by the open-source OwnTalk client; other Talk clients ignore them.
 
-Access is checked on every request against the current Talk membership through public Nextcloud interfaces. Shared checklists store hashes of checked items. Conditional reminders store the owner, conversation, message ID and deadline. The app reads relevant Talk messages to check access, checklist content and replies. It does not store message bodies, push tokens or credentials. To read the caller's Talk role it forwards the caller's Authorization header to this Nextcloud server's own Talk API, without storing it. Settings are stored on the server and are visible to the server administrator, like Talk chat itself.]]></description>
-	<version>0.6.0</version>
+Access is checked on every request against the current Talk membership through public Nextcloud interfaces. Shared checklists store hashes of checked items. Conditional reminders store the owner, conversation, message ID and deadline. The app reads relevant Talk messages to check access, checklist content and replies. It does not keep copies of Talk messages, push tokens or credentials. To read the caller's Talk role it forwards the caller's Authorization header to this Nextcloud server's own Talk API, without storing it. Settings are stored on the server and are visible to the server administrator, like Talk chat itself.
+
+Private handoff stores draft text and a reference to the quoted message when a user transfers a draft. Favorite GIFs store provider IDs and labels. Photo notes store coordinates and discussion text for a specific version of a shared file.]]></description>
+	<version>0.7.0</version>
 	<licence>agpl</licence>
 	<author homepage="https://github.com/nks-hub">NKS Hub</author>
 	<namespace>OwnTalkExtensions</namespace>

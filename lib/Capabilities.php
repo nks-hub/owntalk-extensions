@@ -37,9 +37,12 @@ final class Capabilities implements ICapability {
 		}
 		$roles = $this->talk->origin() !== null;
 		$features = $this->fields->features();
+		$features[] = 'personal.gifFavorites';
 		if ($roles) {
 			$features[] = 'chat.checklists';
 			$features[] = 'chat.unansweredReminders';
+			$features[] = 'personal.draftHandoff';
+			$features[] = 'chat.photoNotes';
 			if ($this->signal->isAvailable()) {
 				$features[] = 'signal.notifyPush';
 			}

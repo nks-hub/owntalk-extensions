@@ -8,6 +8,11 @@ use OC\DB\SchemaWrapper;
 use OC\Migration\NullOutput;
 use OC\Comments\Manager as Comments;
 use OCA\OwnTalkExtensions\Db\RoomToolsRepository;
+use OCA\OwnTalkExtensions\Db\RoomDocuments;
+use OCA\OwnTalkExtensions\Service\PersonalRoomDocuments;
+use OCA\OwnTalkExtensions\Service\PhotoNotes;
+use OCA\OwnTalkExtensions\Service\PhotoFileAccess;
+use OCA\OwnTalkExtensions\Migration\Version7000Date20261127000100;
 use OCA\OwnTalkExtensions\Migration\Version1000Date20261112000000;
 use OCA\OwnTalkExtensions\Migration\Version6000Date20261127000000;
 use OCA\OwnTalkExtensions\Service\Checklist;
@@ -41,18 +46,26 @@ function expectSame(mixed $expected, mixed $actual): void {
 }
 
 $factory = Server::get(ConnectionFactory::class);
-if (($argv[2] ?? '') === '--check-item') {
+if (in_array($argv[2] ?? '', ['--check-item', '--edit-draft'], true)) {
 	[$path, $item, $otherItem] = array_slice($argv, 3);
 	if (dirname(realpath($path)) !== realpath(sys_get_temp_dir()) || !str_starts_with(basename($path), 'otc')) {
 		throw new InvalidArgumentException('Expected a scratch room-tools database');
 	}
 	$db = $factory->getConnection('sqlite3', ['path' => $path]);
-	$repository = new RoomToolsRepository(new ConnectionAdapter($db));
-	expectSame([], $repository->checked('room1', 1, [$item, $otherItem]));
+	$conn = new ConnectionAdapter($db);
+	if ($argv[2] === '--edit-draft') {
+		$personal = new PersonalRoomDocuments(new RoomDocuments($conn));
+		expectSame([$item], array_column($personal->drafts('alice', 'room1', 7), 'id'));
+		$write = fn () => $personal->writeDraft('alice', 'room1', 7, $otherItem, $item, 'Edit ' . $otherItem, 8);
+	} else {
+		$repository = new RoomToolsRepository($conn);
+		expectSame([], $repository->checked('room1', 1, [$item, $otherItem]));
+		$write = fn () => $repository->setChecked('room1', 1, $item, true);
+	}
 	echo "ready\n";
 	flush();
 	expectSame("go\n", fgets(STDIN));
-	$repository->setChecked('room1', 1, $item, true);
+	$write();
 	exit(0);
 }
 
@@ -81,30 +94,32 @@ try {
 	$a = new RoomToolsRepository(new ConnectionAdapter($connection));
 	$b = new RoomToolsRepository(new ConnectionAdapter($other));
 	$list = Checklist::parse("☑ Lunch\n- [ ] Bread\n- [ ] Cheese");
-	$workers = [];
-	try {
-		foreach ([0, 1] as $index) {
-			$proc = proc_open([PHP_BINARY, __FILE__, $argv[1], '--check-item', $path,
-				$list['items'][$index], $list['items'][1 - $index]],
-				[0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => STDERR], $pipes);
-			$workers[] = [$proc, $pipes[0], $pipes[1]];
+	$parallelWrites = static function (array $jobs) use ($argv, $path) {
+		$workers = [];
+		try {
+			foreach ($jobs as [$mode, $first, $second]) {
+				$proc = proc_open([PHP_BINARY, __FILE__, $argv[1], $mode, $path, $first, $second],
+					[0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => STDERR], $pipes);
+				$workers[] = [$proc, $pipes[0], $pipes[1]];
+			}
+			foreach ($workers as [, , $output]) {
+				expectSame("ready\n", fgets($output));
+			}
+			foreach ($workers as [, $input]) {
+				fwrite($input, "go\n");
+				fflush($input);
+			}
+		} finally {
+			$codes = [];
+			foreach ($workers as [$proc, $input, $output]) {
+				fclose($input);
+				fclose($output);
+				$codes[] = proc_close($proc);
+			}
 		}
-		foreach ($workers as [, , $output]) {
-			expectSame("ready\n", fgets($output));
-		}
-		foreach ($workers as [, $input]) {
-			fwrite($input, "go\n");
-			fflush($input);
-		}
-	} finally {
-		$codes = [];
-		foreach ($workers as [$proc, $input, $output]) {
-			fclose($input);
-			fclose($output);
-			$codes[] = proc_close($proc);
-		}
-	}
-	expectSame([0, 0], $codes);
+		expectSame([0, 0], $codes);
+	};
+	$parallelWrites([['--check-item', ...$list['items']], ['--check-item', ...array_reverse($list['items'])]]);
 	$b->setChecked('room1', 1, $list['items'][0], true);
 	expectSame([0, 1], $a->checked('room1', 1, $list['items']));
 	$edited = Checklist::parse("☑ Dinner\n- [ ] Cheese\n- [ ] Fruit\n- [ ] Bread");
@@ -162,7 +177,42 @@ try {
 	$insert(106, 'bob', 'comment', 1);
 	expectSame(false, $service->hasReply('42', 1, 1, 'alice', 1105));
 	expectSame(true, $service->hasReply('42', 1, 1, 'alice', 1106));
-	echo 'PASS: upgrade, concurrent writes, retries, and Nextcloud comments across two pages.', PHP_EOL;
+	$schema = new SchemaWrapper($connection);
+	(new Version7000Date20261127000100())->changeSchema(new NullOutput(), fn () => $schema, []);
+	$connection->migrateToSchema($schema->getWrappedSchema());
+	$docs = new RoomDocuments($adapter);
+	$first = new PersonalRoomDocuments($docs);
+	$second = new PersonalRoomDocuments(new RoomDocuments(new ConnectionAdapter($other)));
+	$id1 = '10000000-0000-4000-8000-000000000001';
+	$id2 = '10000000-0000-4000-8000-000000000002';
+	$id3 = '10000000-0000-4000-8000-000000000003';
+	$meta = ['title' => 'Hello', 'subline' => ''];
+	$first->favorite('alice', 'giphy', 'gif7', $id1, $meta);
+	expectSame('gif7', $second->gifs('alice')['items'][0]['id']);
+	$second->favorite('alice', 'giphy', 'gif7', $id2, null);
+	expectSame(['saved' => false], $first->favorite('alice', 'giphy', 'gif7', $id1, $meta));
+	$first->writeDraft('alice', 'room1', 7, $id1, null, 'Original', 8);
+	$parallelWrites([['--edit-draft', $id1, $id2], ['--edit-draft', $id1, $id3]]);
+	$ids = array_column($first->drafts('alice', 'room1', 7), 'id');
+	sort($ids);
+	expectSame([$id2, $id3], $ids);
+	$second->deleteDraft('alice', 'room1', 7, $id2);
+	expectSame([$id3], array_column($first->writeDraft('alice', 'room1', 7, $id2, $id1, 'Edit ' . $id2, 8), 'id'));
+	$second->deleteDraft('alice', 'room2', 0, $id1);
+	expectSame([], $first->writeDraft('alice', 'room2', 0, $id1, null, 'Delayed upload', null));
+	$photos = new PhotoNotes($docs, Server::get(PhotoFileAccess::class));
+	$scope = RoomDocuments::key('photo', 'room1', '8', '12', 'v1');
+	$photos->write($scope, 'alice', $id1, 'Here', null, 0.25, 0.5);
+	$photos->write($scope, 'bob', $id2, 'Yes', $id1, null, null);
+	expectSame('Yes', $photos->notes($scope)[0]['replies'][0]['body']);
+	expectSame([], $photos->notes(RoomDocuments::key('photo', 'room1', '8', '12', 'v2')));
+	$second->favorite('bob', 'giphy', 'gif7', $id1, $meta);
+	$docs->purgeOwner('alice');
+	expectSame([], $first->drafts('alice', 'room1', 7));
+	expectSame(null, $docs->operation(RoomDocuments::key('gifs', 'alice'), $id1));
+	expectSame('gif7', $second->gifs('bob')['items'][0]['id']);
+	expectSame(1, count($photos->notes($scope)));
+	echo 'PASS: upgrades, concurrent checkbox and draft writes, reminders, GIF replay, photo discussions, account removal.', PHP_EOL;
 } finally {
 	if (isset($other)) {
 		$other->close();

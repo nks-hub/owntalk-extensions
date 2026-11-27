@@ -3,6 +3,12 @@
 All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.0 - Unreleased
+
+- Synchronize favorite GIFs across devices signed into one account.
+- Transfer a draft with its quote and keep concurrent edits as separate versions.
+- Attach pins and discussion replies to a specific version of a shared photo.
+
 ## 0.6.0 - Unreleased
 
 - Share checklist state on Talk messages. Independent item edits are merged.

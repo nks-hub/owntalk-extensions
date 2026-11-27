@@ -5,8 +5,7 @@ Base path: `/ocs/v2.php/apps/owntalk_extensions/api/v1`. Every request sends
 other Nextcloud OCS call (app password via Basic auth). Responses use the
 standard OCS envelope `{"ocs": {"meta": {...}, "data": ...}}`.
 
-This document describes 0.6.0. Nicknames, personal preferences and `/revisions`
-are planned and not available yet.
+This document describes 0.7.0.
 
 ## Capability
 
@@ -242,3 +241,70 @@ after five minutes and is dropped if it still fails a day after the deadline.
 per hour, image downloads 60 per user per minute. Unknown or inaccessible
 tokens count towards Nextcloud's brute-force protection, so clients stop polling
 a conversation after `404`.
+
+## Personal GIFs, draft handoff and photo notes (0.7.0)
+
+Check each feature in `features` before using its endpoints. All IDs generated
+by clients for operations, draft versions, pins and replies are lowercase UUIDs.
+
+### Favorite GIFs
+
+The `personal.gifFavorites` capability exposes these routes for the authenticated
+account. GET `/personal/gifs` returns the complete collection, most recently
+saved first. Example response data:
+
+```json
+{"items":[{"provider":"giphy","id":"abc123","title":"Hello","subline":""}]}
+```
+
+PUT `/personal/gifs/giphy/{id}` with `{operationId,title,subline}` saves the GIF.
+DELETE the same path with `?operationId=...` to remove it. Both return
+`{"saved":true}` or `{"saved":false}` for the current state. Reuse the same
+operation ID when retrying a request. A replay after a removal leaves the GIF
+removed. Reusing an operation ID for a different change returns `409`.
+IDs are alphanumeric, up to 100 characters. The two optional labels default
+to empty strings and allow 200 characters each. The limit is 500 GIFs per
+account. The client obtains previews through its existing Talk proxy.
+
+### Draft handoff
+
+Clients explicitly enable handoff before writing a draft. With
+`personal.draftHandoff`, GET `/room/{token}/drafts/{threadId}` returns
+`{"variants":[]}` or an array of `{id,baseId,text,replyTo}` inside `variants`.
+Use thread ID 0 for the main chat. Other IDs must identify a visible Talk thread.
+
+PUT `/room/{token}/drafts/{threadId}/{id}` with `{baseId,text,replyTo}` to
+publish one immutable version. Use a new ID for each edit. For a new draft
+pass `baseId:null`; for an edit pass the version that the author saw. A stale
+but known base produces a sibling version. Unknown bases and rewrites of a
+used ID return `409`. Text can contain 1 to 32,000 Unicode code points.
+At most 32 variants may be active in one account, conversation and thread.
+
+`replyTo` is the optional ID of a visible Talk message. A quote that becomes
+inaccessible is returned as `null`; the draft text remains. DELETE the exact
+version that was sent using the same path. PUT and DELETE return the current
+variants for that scope. A repeated or delayed upload cannot resurrect a
+deleted version. Removing the account erases its personal draft and GIF data.
+
+### Discussions on photos
+
+With `chat.photoNotes`, GET `/room/{token}/photo/{messageId}/{fileId}/notes`.
+The message must contain that file among its Talk rich-object parameters.
+The file must also be a readable image in the caller's Files. The response
+contains `{version,canEdit,notes}`. A note has `{id,x,y,body,author,replies}`;
+each reply has `{id,body,author}`. Authors are Nextcloud user IDs. The
+version is the current file ETag without surrounding quotes. If your viewer
+has cached a photo, send the optional `version` query parameter with the GET.
+A mismatched version returns `409` and lost access returns `404`.
+
+POST `{version,requestId,x,y,body}` to the notes path to pin a comment.
+Coordinates are fractions from 0 to 1 of the displayed, orientation-corrected
+image, measured from its top left before zoom and pan. POST
+`{version,requestId,body}` to `.../notes/{noteId}/replies` to reply. Both
+operations require chat write permission and return the same shape as GET.
+The request ID becomes the pin or reply ID. Repeating it with the same data
+returns the current discussion without duplicating it. Reusing the ID for
+different data returns `409`. A file replacement starts a new discussion.
+Each post allows 2,000 characters. Limits per photo version are 100 pins,
+100 replies per pin and 256 posts overall. A new post beyond a limit returns
+`422`. The discussion can still be read.

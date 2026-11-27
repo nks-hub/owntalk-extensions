@@ -131,6 +131,14 @@ class TalkOcsClient {
 
 	/** Reads only a message Talk exposes to the authenticated participant. */
 	public function visibleMessage(string $token, int $id, string $authorization): array {
+		$message = $this->contextMessage($token, $id, $authorization);
+		if (($message['messageType'] ?? null) !== 'comment' || !empty($message['systemMessage'])) {
+			throw new AccessException(AccessException::NOT_FOUND);
+		}
+		return $message;
+	}
+
+	public function contextMessage(string $token, int $id, string $authorization): array {
 		$origin = $this->origin();
 		if ($origin === null || !preg_match(RoomAccess::TOKEN_PATTERN, $token) || $id < 1
 			|| !preg_match('/^(Basic|Bearer) [A-Za-z0-9+\/=._~-]+$/D', $authorization)) {
@@ -155,7 +163,7 @@ class TalkOcsClient {
 			}
 			foreach ($list as $message) {
 				if (is_array($message) && ($message['id'] ?? null) === $id && ($message['token'] ?? null) === $token
-					&& ($message['messageType'] ?? null) === 'comment' && empty($message['systemMessage'])) {
+					&& empty($message['deleted']) && ($message['messageType'] ?? '') !== 'comment_deleted') {
 					return $message;
 				}
 			}
