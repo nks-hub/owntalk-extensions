@@ -35,14 +35,21 @@ final class Capabilities implements ICapability {
 		if ($user === null || !$this->roomAccess->isTalkAvailable($user)) {
 			return [];
 		}
+		$roles = $this->talk->origin() !== null;
+		$features = $this->fields->features();
+		if ($roles) {
+			$features[] = 'chat.checklists';
+			$features[] = 'chat.unansweredReminders';
+			if ($this->signal->isAvailable()) {
+				$features[] = 'signal.notifyPush';
+			}
+		}
 		return [
 			'owntalk_extensions' => [
 				'version' => $this->appManager->getAppVersion('owntalk_extensions'),
 				'api' => 1,
-				'features' => $this->signal->isAvailable() && $this->talk->origin() !== null
-					? [...$this->fields->features(), 'signal.notifyPush']
-					: $this->fields->features(),
-				'acl' => $this->talk->origin() === null ? 'membership' : 'roles',
+				'features' => $features,
+				'acl' => $roles ? 'roles' : 'membership',
 				'roomTypes' => ['one2one', 'group', 'public'],
 				'presets' => FieldRegistry::PRESETS,
 				'limits' => [

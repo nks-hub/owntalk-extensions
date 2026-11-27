@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\OwnTalkExtensions\Tests\Unit;
 
 use OCA\OwnTalkExtensions\Service\TalkOcsClient;
+use OCA\OwnTalkExtensions\Exception\AccessException;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
@@ -91,5 +92,22 @@ final class TalkOcsClientTest extends TestCase {
 
 	public function testParticipantListIsNullWhenTalkRefuses(): void {
 		self::assertNull($this->client('https://cloud.example', 404, [])->participantUserIds('abcd1234', 'Basic YWxpY2U6cHc='));
+	}
+
+	public function testContextOnlyAcceptsTheRequestedVisibleComment(): void {
+		$message = ['id' => 16, 'token' => 'room1', 'messageType' => 'comment', 'systemMessage' => '', 'message' => 'Hello'];
+		$client = $this->client('https://cloud.example', 200, [['id' => 15] + $message, $message]);
+		self::assertSame($message, $client->visibleMessage('room1', 16, 'Bearer abc'));
+		self::assertSame('https://cloud.example/ocs/v2.php/apps/spreed/api/v1/chat/room1/16/context?limit=0', $this->sentUrl);
+		self::assertFalse($this->sentOptions['allow_redirects']);
+		foreach ([[200, [['token' => 'room2'] + $message]], [200, [['id' => 13] + $message]],
+			[200, [['messageType' => 'system'] + $message]], [304, []], [403, []]] as [$status, $body]) {
+			try {
+				$this->client('https://cloud.example', $status, $body)->visibleMessage('room1', 16, 'Bearer abc');
+				self::fail('Talk did not return a visible matching message');
+			} catch (AccessException $e) {
+				self::assertSame(404, $e->httpStatus());
+			}
+		}
 	}
 }

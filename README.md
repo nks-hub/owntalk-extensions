@@ -11,12 +11,14 @@ Nextcloud app that stores shared per-conversation settings for Nextcloud Talk (c
 - 🎨 **Shared colours** - chat background, accent and bubble colours stored once per conversation and shown to every participant using OwnTalk
 - 🖼️ **Wallpapers and photos** - a preset wallpaper drawn by the client, or a photo that the server checks, rotates, scales to 2560 px and re-encodes as JPEG without metadata
 - 👍 **Quick emoji** - one emoji per conversation that OwnTalk offers as a one-tap reply
+- ☑ **Shared checklists** - participants can check off items in a Talk message and keep their selections when the author reorders the list
+- 🔔 **Reminders for unanswered messages** - choose a deadline for a message you sent in a direct conversation or thread
 - 🔒 **Talk-based access control** - every request checks current Talk membership through Nextcloud's public collaboration resource API and the caller's Talk role through the Talk OCS API; nothing is cached between requests
 - ⚡ **Instant updates** - with the `notify_push` app installed, a change reaches the other participants' OwnTalk at once instead of on the next poll
 - 🔁 **Concurrent edits** - revisions with `If-Match`; two people changing different fields both succeed, the same field returns `412`
 - 🧩 **Optional** - without this app OwnTalk works as before and hides the extra settings; other Talk clients ignore the data
 
-The app does not read or store chat messages, push tokens or credentials. Settings are stored in the Nextcloud database and are visible to the server administrator, like Talk chat itself.
+The app reads the selected Talk message to verify access and to identify checklist items. For a conditional reminder it checks later messages for a reply. The database stores settings, checked item hashes and reminder deadlines. Message bodies, push tokens and credentials are never stored by this app.
 
 ## Requirements
 
@@ -85,6 +87,10 @@ Integration tests run against a real Nextcloud with Talk and create throw-away u
 OT_BASE=http://localhost:8080 OT_ADMIN_USER=admin OT_ADMIN_PASS=... \
   python3 tests/integration/acl_test.py
 ```
+
+For the message tools, run `php tests/integration/room_tools_sqlite.php /path/to/disposable-nextcloud`
+with a Nextcloud 34 server tree and PDO SQLite. It creates a temporary database
+and checks the upgrade, concurrent edits and Talk comment queries.
 
 ## Contributing
 

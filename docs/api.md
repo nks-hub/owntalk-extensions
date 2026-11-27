@@ -5,7 +5,7 @@ Base path: `/ocs/v2.php/apps/owntalk_extensions/api/v1`. Every request sends
 other Nextcloud OCS call (app password via Basic auth). Responses use the
 standard OCS envelope `{"ocs": {"meta": {...}, "data": ...}}`.
 
-This document describes 0.3.0. Nicknames, personal preferences and `/revisions`
+This document describes 0.6.0. Nicknames, personal preferences and `/revisions`
 are planned and not available yet.
 
 ## Capability
@@ -191,7 +191,52 @@ The capability then lists `signal.notifyPush` in `features`. The signal carries
 no settings; clients read the document again with `GET`. It is best effort, so
 clients keep polling.
 
-## Rate limits
+## Message tools (0.6.0)
+
+Discover `chat.checklists` and `chat.unansweredReminders` in the capability's
+`features` list. Both require a local conversation, an authenticated member
+and a message visible to that member in Talk.
+
+### Shared checklist
+
+`GET /room/{token}/checklist/{id}` returns, for example,
+`{"revision":"<sha256>","canEdit":true,"checked":[0,2]}`. Source text starts
+with `☑ ` and a title of up to 120 Unicode code points. Each of the next 1 to
+50 lines starts with `- [ ] ` and contains up to 200 code points of item text.
+Titles and items must contain a non-whitespace character.
+
+`PUT /room/{token}/checklist/{id}` accepts
+`{"revision":"<sha256>","item":1,"checked":true}` and returns the same shape
+as GET. The revision is the lowercase SHA-256 of the original message's UTF-8
+bytes, including its line endings. After an edit, a stale revision returns
+`409`. Each zero-based item is written independently. Checked items are
+identified by their text and occurrence among identical labels, so renaming
+the title or reordering distinct items preserves their state. A different
+label starts unchecked unless it was previously checked in the same message.
+Edits require permission to write in the conversation under the chat policy.
+An invalid index returns `400`, a denied edit `403`, and a hidden or invalid
+checklist `404`. The limits are 120 GETs and 60 PUTs per user per minute.
+
+### Reminder if unanswered
+
+`PUT /room/{token}/followup/{id}` accepts `{"dueAt":1800000000,"threadId":0}`
+for your own message in a direct conversation. In a Talk thread, pass its root
+ID. The deadline is a Unix timestamp in seconds, in the future and within 366
+days. A wrong scope or deadline returns `400`, and another author's message
+returns `403`.
+
+GET and PUT return `{"dueAt":<timestamp>}` while a reminder is pending or
+`{"dueAt":null}` once another person has replied. DELETE cancels the caller's
+reminder and returns `{"dueAt":null}`. Replies count through the deadline,
+including the exact second. Read receipts, emoji reactions, your own messages
+and replies in another thread do not count. Each participant sees only their
+own reminders. The limits are 60 GETs and 30 PUTs or DELETEs per user per minute.
+
+Nextcloud's background jobs deliver a Talk reminder pointing to the original
+message. They check membership again before delivery. A failed check retries
+after five minutes and is dropped if it still fails a day after the deadline.
+
+## Settings rate limits
 
 `GET` 120 and `PATCH` 30 requests per user per minute, image uploads 10 per user
 per hour, image downloads 60 per user per minute. Unknown or inaccessible

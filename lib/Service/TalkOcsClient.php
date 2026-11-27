@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\OwnTalkExtensions\Service;
 
+use OCA\OwnTalkExtensions\Exception\AccessException;
 use OCP\Http\Client\IClientService;
 use OCP\ICache;
 use OCP\ICacheFactory;
@@ -126,6 +127,44 @@ class TalkOcsClient {
 			}
 		}
 		return array_keys($users);
+	}
+
+	/** Reads only a message Talk exposes to the authenticated participant. */
+	public function visibleMessage(string $token, int $id, string $authorization): array {
+		$origin = $this->origin();
+		if ($origin === null || !preg_match(RoomAccess::TOKEN_PATTERN, $token) || $id < 1
+			|| !preg_match('/^(Basic|Bearer) [A-Za-z0-9+\/=._~-]+$/D', $authorization)) {
+			throw new AccessException(AccessException::NOT_FOUND);
+		}
+		try {
+			$response = $this->clientService->newClient()->get(
+				$origin . '/ocs/v2.php/apps/spreed/api/v1/chat/' . $token . '/' . $id . '/context?limit=0',
+				$this->options($authorization));
+			$status = $response->getStatusCode();
+			if (in_array($status, [304, 401, 403, 404, 412], true)) {
+				throw new AccessException(AccessException::NOT_FOUND);
+			}
+			$body = $response->getBody();
+			if ($status !== 200 || !is_string($body) || strlen($body) > self::MAX_PARTICIPANTS_BYTES) {
+				throw new \UnexpectedValueException();
+			}
+			$data = json_decode($body, true, 32, JSON_THROW_ON_ERROR);
+			$list = $data['ocs']['data'] ?? null;
+			if (!is_array($list) || !array_is_list($list)) {
+				throw new \UnexpectedValueException();
+			}
+			foreach ($list as $message) {
+				if (is_array($message) && ($message['id'] ?? null) === $id && ($message['token'] ?? null) === $token
+					&& ($message['messageType'] ?? null) === 'comment' && empty($message['systemMessage'])) {
+					return $message;
+				}
+			}
+		} catch (AccessException $e) {
+			throw $e;
+		} catch (\Throwable) {
+			throw new AccessException(AccessException::TALK_UNAVAILABLE);
+		}
+		throw new AccessException(AccessException::NOT_FOUND);
 	}
 
 	/** @return array<string, mixed> */
