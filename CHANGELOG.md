@@ -3,14 +3,11 @@
 All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.7.0 - Unreleased
+## 0.7.0 - 2026-11-27
 
 - Synchronize favorite GIFs across devices signed into one account.
 - Transfer a draft with its quote and keep concurrent edits as separate versions.
 - Attach pins and discussion replies to a specific version of a shared photo.
-
-## 0.6.0 - Unreleased
-
 - Share checklist state on Talk messages. Independent item edits are merged.
 - Set a private reminder for an unanswered message in a direct conversation
   or thread. Talk delivers it when no other person replies by the deadline.

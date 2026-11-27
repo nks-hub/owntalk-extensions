@@ -1,5 +1,7 @@
 # OwnTalk Extensions
 
+[![CI](https://img.shields.io/github/actions/workflow/status/nks-hub/owntalk-extensions/ci.yml?branch=main&label=CI)](https://github.com/nks-hub/owntalk-extensions/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/nks-hub/owntalk-extensions?label=version)](https://github.com/nks-hub/owntalk-extensions/tags)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-34%20%7C%2035-0082c9)](https://nextcloud.com)
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-777bb4)](https://www.php.net)
 [![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue)](LICENSE)
